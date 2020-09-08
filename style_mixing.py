@@ -6,7 +6,7 @@ from launcher import run
 from checkpointer import Checkpointer
 from dlutils.pytorch import count_parameters
 from defaults import get_cfg_defaults
-import lreq
+import layers.lreq
 
 from PIL import Image
 
@@ -165,11 +165,3 @@ def _main(cfg, logger):
             place(canvas, rec[j], 1 + j, 1 + row)
 
     save_image(torch.Tensor(canvas), 'style_mixing/output/stylemix.png')
-
-
-
-
-if __name__ == "__main__":
-    gpu_count = 1
-    run(main, get_cfg_defaults(), description='ALAE-style-mixing', default_config='configs/ffhq.yaml',
-        world_size=gpu_count, write_log=False)

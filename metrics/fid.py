@@ -154,9 +154,3 @@ def sample(cfg, logger):
     with torch.no_grad():
         ppl = FID(cfg, num_images=50000, minibatch_size=16 * torch.cuda.device_count())
         ppl.evaluate(logger, mapping_fl, model.decoder, model, cfg.DATASET.MAX_RESOLUTION_LEVEL - 2)
-
-
-if __name__ == "__main__":
-    gpu_count = 1
-    run(sample, get_cfg_defaults(), description='ALAE-fid', default_config='configs/ffhq.yaml',
-        world_size=gpu_count, write_log="metrics/fid_score.txt")

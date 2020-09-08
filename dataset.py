@@ -81,7 +81,7 @@ class FractalLabel(Dataset):
     
     def __getitem__(self, idx):
         result = self.transform(Image.open(self.data[idx]).convert('RGB'))
-        label = torch.full((result.shape[0], result.shape[1]), fill_value=idx, dtype=torch.int)
+        label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
         return result, label
 
 def _get_image_size(img):
@@ -215,4 +215,3 @@ def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=51
     
     dataset.transform = transforms.Compose(transform_list)
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
-

@@ -199,23 +199,6 @@ class ActNorm(nn.Module):
         return z * self.scale + self.bias, self.scale.abs().log().sum() * z.shape[2] * z.shape[3]
 
 # ------------------------------------------------------------------------------------------------------------------
-# Spectral Norm - Normalized
-# ------------------------------------------------------------------------------------------------------------------
-class SpectralNorm(nn.Module):
-    """ Spectral Normalization - Normalized Flow layer; cf Glow section 3.1 """
-    def __init__(self, param_dim=(1,3,1,1)):
-        super().__init__()
-        self.norm = nn.utils.spectral_norm()
-        self.denorm = nn.utils.remove_spectral_norm()
-
-    def forward(self, x):
-        z = self.norm(x)
-        return z
-
-    def inverse(self, z):
-        x = self.denorm(z)
-        return x
-# ------------------------------------------------------------------------------------------------------------------
 # Layer Norm
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L812
 # ------------------------------------------------------------------------------------------------------------------
@@ -638,10 +621,16 @@ class LearnableAffineTransform1d(nn.Module):
         """
         super().__init__()
 
-        self.A = ScaledLinear(scale, scale)
+        if isinstance(scale, int):
+            scale = (scale, scale)
+
+        self.A = ScaledLinear(scale[0], scale[1])
+        self.bias = nn.Parameter(torch.zeros(1, scale[1], scale[1], 1), requires_grad=True)
 
     def forward(self, x):
-        z = self.A(x) + self.A.linear.bias.exp() * x        
+        z = self.A(x)
+        x = self.bias.exp() * x
+        z = z + x
         return z
 
 class LearnableAffineTransform2d(nn.Module):
@@ -653,7 +642,8 @@ class LearnableAffineTransform2d(nn.Module):
         self.bias = nn.Parameter(torch.zeros(1, scale[0], scale[1], 1), requires_grad=True)
 
     def forward(self, x):
-        z = self.bias + self.weight.exp() * x        
+        x = self.weight.exp() * x
+        z = self.bias + x       
         return z
 # ------------------------------------------------------------------------------------------------------------------
 # Project from RGB space to Feature space
@@ -1017,6 +1007,84 @@ class GeneratorBlock(nn.Module):
             x = x * ratio[0] + i * ratio[1]
 
         return x
+
+   
+class GeneratorSkipBlock(nn.Module):
+    def __init__(self, inp_c, oup_c, code, blur_upsample=True, 
+                 fused_scale=True, learn_blur=True, learn_residual=False, 
+                 learn_style=False, learn_noise=False,
+                 scale=4, act="leaky", norm="pixel"):
+        super().__init__()
+
+        print(f"[GeneratorBlock]\t Input Channel: {inp_c}, Output Channel: {oup_c}, Code Size: {code}, Scale: {scale}")
+                
+        self.initial = initial
+        self.blur_upsample = blur_upsample
+        self.learn_blur = learn_blur
+        self.learn_residual = learn_residual
+        self.learn_style = learn_style
+        self.learn_noise = learn_noise
+
+        # learnable affine transform to correct blur
+        if self.learn_blur:
+            self.blur_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
+        
+        self.residual_gain = nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)))
+        self.res_upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
+        self.res_blur = Blur(inp_c)
+        if self.learn_blur:
+            self.res_blur_affine = set_scale(LearnableAffineTransform2d(scale=inp_c))    
+
+        # Learnable noise coefficients
+        self.B = set_scale(IntermediateNoise(inp_c))
+        # Learnable affine transform
+        if self.learn_noise:
+            self.B_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
+        
+        # Each Ada PN contains learnable parameters A
+        if norm == "pixel":
+            self.norm = PixelNorm()
+        elif norm == "instance":
+            self.norm = nn.InstanceNorm2d()
+        
+        # In case if it is the initial block, learnable constant is created
+        if self.initial:
+            self.constant = nn.Parameter(torch.randn(1, inp_c, 4, 4), requires_grad=True)
+        else:
+            self.conv1 = ScaledConv2d(inp_c, inp_c, kernel_size=3, padding=1)
+            
+        self.conv2 = ScaledConv2d(inp_c, oup_c, kernel_size=3, padding=1)
+        
+        self.upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
+        self.blur = Blur(inp_c)
+        if act == "leaky":
+            self.activation = nn.LeakyReLU(0.2)
+        elif act == "gelu":
+            self.activation = nn.GELU()
+        elif act == "mish":
+            self.activation = Mish()
+        
+    def forward(self, x):
+        """
+        x - (N x C x H x W)
+        w - (N x C), where A: (N x C) -> (N x (C x 2))
+        """
+        x = self.upsample(x)            
+            
+        if self.blur_upsample:
+            x = self.blur(x)
+        if self.learn_blur:
+            x = self.blur_affine(x)
+
+        x = self.conv1(x)
+        x = self.activation(x)    
+        
+        x = self.B(x)
+        if self.learn_noise:
+            x = self.B_affine(x)   
+        x = self.norm(x)      
+
+        return x
     
 ####################################################################################################################
 ################################################## Level 3 blocks ##################################################
@@ -1047,17 +1115,15 @@ class FeatureProjectionNetwork(nn.Module):
 
     def build_layer(self, code, skip=None):
         layer = []
-        linear = ScaledLinear(code, code)
-
-        if skip:
-            linear = nn.Bilinear(code, code, code)(linear, skip)
+        layer.append(ScaledLinear(code, code))
 
         if self.norm == 'batch': 
-            linear = nn.BatchNorm1d(code)(linear)
+            layer.append(nn.BatchNorm1d(code))
         elif self.norm == 'layer':
-            linear = nn.LayerNorm(code)(linear)
-
-        layer.append(linear)
+            layer.append(nn.LayerNorm(code))
+        elif self.norm == 'instance':
+            layer.append(nn.InstanceNorm1d(code))
+            
         if self.act == "gelu":
             layer.append(nn.GELU())
         elif self.act == "mish":
@@ -1267,7 +1333,7 @@ class StyleGenerator(nn.Module):
         for block in self.generator:
             named_block = list(block.named_parameters())
             for index in range(len(named_block)):
-                if 'ada_in' not in named_block[index][0]:
+                if 'ada_norm' not in named_block[index][0]:
                     pars.append(named_block[index][1])
         return pars
     
@@ -1289,7 +1355,7 @@ class StyleGenerator(nn.Module):
         if return_norm:
             # return norm is not 0, it should be set to the layer index (positive)
             # of the layer to use for the return value
-            norm_layer_num = return_norm
+            norm_layer_nums = return_norm
             return_norm = True
         n_blocks = int(log2(scale) - 1) # Compute the number of required blocks        
                 
@@ -1297,12 +1363,12 @@ class StyleGenerator(nn.Module):
         inp = self.generator[0].constant
 
         if return_norm:
-            norm = None
+            norms = []
         
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            norm = self.generator[0](inp, w[:, 0])
-            if return_norm: return norm
+            norm = self.generator[0](inp, w[:, 0])            
+            if return_norm: return [norm]
             else: return self.toRGB[0](norm, upsample=False)
 
         # If scale >= 8
@@ -1311,14 +1377,23 @@ class StyleGenerator(nn.Module):
             inp = self.generator[index](inp, w[:, index])
             
             # if returning norm, cut out early
-            if return_norm and norm_layer_num == index:
-                return inp
+            if return_norm and index in norm_layer_nums:
+                norms.append(inp)
 
             # Save last 2 scales
             if index in [n_blocks-2, n_blocks-1]:
                 activations_2x.append(inp)
         
         inp = self.toRGB[n_blocks-1](activations_2x[1], upsample=False)
+        
         if alpha < 1: # In case if blending is applied            
             inp = (1 - alpha) * self.toRGB[n_blocks-2](activations_2x[0], upsample=True) + alpha * inp
-        return inp
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        else:
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        if return_norm:
+            return norms
+        else:
+            return inp

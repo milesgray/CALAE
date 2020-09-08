@@ -30,3 +30,14 @@ In the ALAE setup, for a `real image` to pass through the system, it will go thr
 3. Input `latent code` into `Projector` to transform into `generative code`
 4. Input `generative code` into `Generator` to obtain a `fake image`
 5. Input `fake image` into the `Discriminator` which attempts to classify it as a fake image (0 label) as opposed to the `real image` from the DataLoader 
+
+## Other Repositories that are influential
+
+- [Hessian Penalty](https://github.com/wpeebles/hessian_penalty)
+- [Contrastive Unpaired Translation](https://github.com/taesungp/contrastive-unpaired-translation)
+- [pyro](https://github.com/pyro-ppl/pyro)
+- [network bending](https://github.com/terrybroad/network-bending)
+- [style-gan](https://github.com/SiskonEmilia/StyleGAN-PyTorch)
+- [Fully Adversarial Mosaics](https://github.com/zalandoresearch/famos)
+- [PyContrast](https://github.com/HobbitLong/PyContrast)
+- [RepDistiller](https://github.com/HobbitLong/RepDistiller)

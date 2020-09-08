@@ -84,7 +84,7 @@ def loss_generator_hessian(G, F_z, scale, alpha,
     return loss           
 
 def loss_generator_consistency(fake, real, loss_fn=None, 
-                               use_ssim=True, ssim_weight=1, 
+                               use_ssim=True, ssim_weight=1, use_ssim_tv=False,
                                use_sobel=True, sobel_weight=1,
                                use_sobel_tv=False, sobel_fn=None):
     if loss_fn:
@@ -92,19 +92,25 @@ def loss_generator_consistency(fake, real, loss_fn=None,
     else:
         loss = 0       
     if use_ssim:
-        ssim_loss = ssim_loss(fake, real)
-        loss += ssim_loss * ssim_weight
+        s_loss = ssim_loss(fake, real)
+        if use_ssim_tv:
+            s_loss = s_loss / total_variation(fake)
+        loss *= s_loss * ssim_weight
     if use_sobel:
+        sobel_real = sobel(real)
+        sobel_fake = sobel(fake)
         if use_sobel_tv:
-            sobel_real = total_variation(sobel(real)) 
-            sobel_fake = total_variation(sobel(fake))
-        else:
-            sobel_real = sobel(real)
-            sobel_fake = sobel(fake)
+            sobel_real = sobel_real / total_variation(fake) 
+            sobel_fake = sobel_fake / total_variation(fake)
+
         if sobel_fn:
             sobel_loss = sobel_fn(sobel_real, sobel_fake)
         else:
-            sobel_loss = (sobel_real - sobel_fake).abs().mean()
+            sim, cs = ssim(sobel_real, sobel_fake, window_size=11, size_average=True, full=True, val_range=2)
+            sim = (1 - sim) / 2
+            cs = (1 - cs) / 2
+
+            sobel_loss = (sim + cs) ** cs
         loss += sobel_loss * sobel_weight
 
     return loss
@@ -113,8 +119,10 @@ def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, labels=None,
                      enable_hessian=True, hessian_layers=[3], current_layer=[0], hessian_weight=0.01):
     # Hessian applied to G here
     F_z = F(z, scale, z2=None, p_mix=0)
+    
     # Autoencoding loss in latent space
     G_z = G(F_z, scale, alpha)
+    tv_G_loss = total_variation(G_z)
     E_z = E(G_z, alpha)
     
     #E_z = E_z.reshape(E_z.shape[0], 1, E_z.shape[1]).repeat(1, F_z.shape[1], 1)
@@ -130,12 +138,11 @@ def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, labels=None,
         loss = loss_fn(F_x, E_z)
 
     if enable_hessian:
-        for layer in hessian_layers:
-            h_loss = hessian_penalty(G, z=F(z, scale, z2=None, p_mix=0), scale=scale, return_norm=layer) * hessian_weight
-            if layer in current_layer:
-                h_loss = h_loss * alpha
-            loss += h_loss
-    return loss
+        h_loss = hessian_penalty(G, z=F_z, scale=scale, return_norm=hessian_layers) * hessian_weight
+        if current_layer in hessian_layers:
+            h_loss = h_loss * alpha
+        loss += h_loss
+    return loss + tv_G_loss
 
 def loss_encoder_hessian(E, samples, scale, alpha, 
                          hessian_layers=[-1,-2], current_layer=[-1], 
@@ -175,6 +182,11 @@ def xsigmoid(x, y):
     return loss.mean()
     #return torch.mean(2 * diff / (1 + torch.exp(-diff)) - diff)
 
+def correlation(x, y):
+    delta = torch.abs(x - y)
+    loss = torch.mean((delta[:-1] * delta[1:]).sum(1))
+    return loss
+
 # Simple BCE Discriminator target
 def adv_loss(logits, target):
     assert target in [1, 0]
@@ -182,6 +194,7 @@ def adv_loss(logits, target):
     loss = F.binary_cross_entropy_with_logits(logits, targets)
     return loss
 
+### FAMOS losses - https://github.com/zalandoresearch/famos/blob/master/utils.py
 ## Total Variation
 def tv_loss(x, y):
     loss = total_variation(x) + total_variation(y)
@@ -201,6 +214,26 @@ def tvArray(x):
     border = torch.cat([border1, border2], 1)
     return border
 
+##negative gram matrix
+def gramMatrix(x,y=None,sq=True,bEnergy=False):
+    if y is None:
+        y = x
+
+    B, CE, width, height = x.size()
+    hw = width * height
+
+    energy = torch.bmm(x.permute(2, 3, 0, 1).view(hw, B, CE),
+                       y.permute(2, 3, 1, 0).view(hw, CE, B), )
+    energy = energy.permute(1, 2, 0).view(B, B, width, height)
+    if bEnergy:
+        return energy
+    sqX = (x ** 2).sum(1).unsqueeze(0)
+    sqY = (y ** 2).sum(1).unsqueeze(1)
+    d=-2 * energy + sqX + sqY
+    if not sq:
+        return d##debugging
+    gram = -torch.clamp(d, min=1e-10)#.sqrt()
+    return gram
 ##some image level content loss
 def contentLoss(a, b, netR, loss_type):
     def nr(x):
@@ -370,12 +403,60 @@ def msssim(img1, img2, window_size=11, size_average=True, val_range=2, normalize
     output = torch.prod(pow1[:-1] * pow2[-1])
     return output
 
-## Sobel... maybe
+## Sobel
+def ssim_sobel_loss(x, y, window_size=11, size_average=True, val_range=2, normalize=True):
+    x_sobel = sobel(x)
+    y_sobel = sobel(y)   
+    sim, cs = ssim(x_sobel, y_sobel, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    sim = (1 - sim) / 2
+    cs = (1 - cs) / 2
+
+    loss = (sim + cs) ** cs
+    return loss
+
+def ssim_sobel_loss_broke(x, y, window_size=11, size_average=True, val_range=2, normalize=True):
+    x_sobel = sobel(x)
+    y_sobel = sobel(y)
+    mssim = []
+    mcs = []    
+    sim, cs = ssim(x, y, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    mssim.append(((sim + 1) / 2))
+    mcs.append(((cs + 1) / 2))    
+    sim, cs = ssim(x_sobel, y_sobel, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    mssim.append(((sim + 1) / 2))
+    mcs.append(((cs + 1) / 2))
+    x_sobel_0 = x * x_sobel[:, 0, ...].reshape(x_sobel.shape[0], 1, x_sobel.shape[2], x_sobel.shape[3])
+    y_sobel_0 = y * y_sobel[:, 0, ...].reshape(y_sobel.shape[0], 1, y_sobel.shape[2], y_sobel.shape[3])
+    sim, cs = ssim(x_sobel_0, y_sobel_0, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    mssim.append(((sim + 1) / 2))
+    mcs.append(((cs + 1) / 2))
+    x_sobel_1 = x * x_sobel[:, 1, ...].reshape(x_sobel.shape[0], 1, x_sobel.shape[2], x_sobel.shape[3])
+    y_sobel_1 = y * y_sobel[:, 1, ...].reshape(y_sobel.shape[0], 1, y_sobel.shape[2], y_sobel.shape[3])
+    sim, cs = ssim(x_sobel_1, y_sobel_1, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    mssim.append(((sim + 1) / 2))
+    mcs.append(((cs + 1) / 2))
+    x_sobel_3 = x - (x_sobel_0 * x_sobel_1)
+    y_sobel_3 = y - (y_sobel_0 * y_sobel_1)
+    sim, cs = ssim(x_sobel_3, y_sobel_3, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
+    mssim.append(((sim + 1) / 2))
+    mcs.append(((cs + 1) / 2))
+
+    mssim = torch.stack(mssim)
+    mcs = torch.stack(mcs)
+
+    loss = torch.prod(mssim ** mcs)
+    return loss
+
+def sobel_correlation_loss(x, y):
+    x_sobel = sobel(x)
+    y_sobel = sobel(y)
+    return correlation(x_sobel, y_sobel)
+
 def sobel(img):
     #N,C,_,_ = img.size()
     grad_y, grad_x = sobel_grad(img)
     return torch.cat((grad_y, grad_x), dim=1)
-def sobel_grad(img, stride=1, padding=0):
+def sobel_grad(img, stride=1, padding=1):
     img = torch.mean(img, 1, True)
     fx = np.array([[1,0,-1],[2,0,-2],[1,0,-1]])
     conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=stride, padding=padding, bias=False)
