@@ -298,7 +298,7 @@ class PKT(nn.Module):
         return loss              
 
 
-     class RKDLoss(nn.Module):
+class RKDLoss(nn.Module):
     """Relational Knowledge Disitllation, CVPR2019"""
     def __init__(self, w_d=25, w_a=50):
         super(RKDLoss, self).__init__()

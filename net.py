@@ -10,18 +10,76 @@ from typing import List, Callable, Union, Any, TypeVar, Tuple
 Tensor = TypeVar('torch.tensor')
 
 import random
+import functools
 from math import log2, ceil
 
 from torch.autograd import Function
 from torch.nn import functional as F
 
-from box_convolution.box_convolution_module import BoxConv2d
+from models.unet import *
 
 from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
 import losses
 from activations import Mish
 
+def init_weights(net, init_type='normal', init_gain=0.02, debug=False):
+    """Initialize network weights.
+    Parameters:
+        net (network)   -- network to be initialized
+        init_type (str) -- the name of an initialization method: normal | xavier | kaiming | orthogonal
+        init_gain (float)    -- scaling factor for normal, xavier and orthogonal.
+    We use 'normal' in the original pix2pix and CycleGAN paper. But xavier and kaiming might
+    work better for some applications. Feel free to try yourself.
+    """
+    def init_func(m):  # define the initialization function
+        classname = m.__class__.__name__
+        if hasattr(m, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+            if debug:
+                print(classname)
+            if init_type == 'normal':
+                init.normal_(m.weight.data, 0.0, init_gain)
+            elif init_type == 'xavier':
+                init.xavier_normal_(m.weight.data, gain=init_gain)
+            elif init_type == 'kaiming':
+                init.kaiming_normal_(m.weight.data, a=0, mode='fan_in')
+            elif init_type == 'orthogonal':
+                init.orthogonal_(m.weight.data, gain=init_gain)
+            else:
+                raise NotImplementedError('initialization method [%s] is not implemented' % init_type)
+            if hasattr(m, 'bias') and m.bias is not None:
+                init.constant_(m.bias.data, 0.0)
+        elif classname.find('BatchNorm2d') != -1:  # BatchNorm Layer's weight is not a matrix; only normal distribution applies.
+            init.normal_(m.weight.data, 1.0, init_gain)
+            init.constant_(m.bias.data, 0.0)
+
+    net.apply(init_func)  # apply the initialization function <init_func>
+
+
+def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[], debug=False, initialize_weights=True):
+    """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
+    Parameters:
+        net (network)      -- the network to be initialized
+        init_type (str)    -- the name of an initialization method: normal | xavier | kaiming | orthogonal
+        gain (float)       -- scaling factor for normal, xavier and orthogonal.
+        gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
+    Return an initialized network.
+    """
+    if len(gpu_ids) > 0:
+        assert(torch.cuda.is_available())
+        net.to(gpu_ids[0])
+        # if not amp:
+        # net = torch.nn.DataParallel(net, gpu_ids)  # multi-GPUs for non-AMP training
+    if initialize_weights:
+        init_weights(net, init_type, init_gain=init_gain, debug=debug)
+    return net
+
 # ------------------------------------------------------------------------------------------------------------------
+def cat_feature(x, y):
+    y_expand = y.view(y.size(0), y.size(1), 1, 1).expand(
+        y.size(0), y.size(1), x.size(2), x.size(3))
+    x_cat = torch.cat([x, y_expand], 1)
+    return x_cat
+
 def downscale2d(x, factor=2):
     return F.avg_pool2d(x, factor, factor)
 
@@ -102,6 +160,53 @@ class StridedConvF(nn.Module):
             x = F.instance_norm(x)
         return self.l2_norm(x)
 
+
+class Conv2dBlock(nn.Module):
+    def __init__(self, input_dim, output_dim, kernel_size, stride,
+                 padding=0, norm='none', activation='relu', pad_type='zero'):
+        super().__init__()
+        self.use_bias = True
+        # initialize padding
+        self.pad = Factory.get_pad_layer(padding)       
+
+        # initialize normalization
+        self.norm = Factory.get_normalization(norm, norm_dim=output_dim)        
+
+        # initialize activation
+        self.activation = Factory.get_activation(activation)
+
+        # initialize convolution
+        self.conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride, bias=self.use_bias)
+
+    def forward(self, x):
+        x = self.conv(self.pad(x))
+        if self.norm:
+            x = self.norm(x)
+        if self.activation:
+            x = self.activation(x)
+        return x
+
+class LinearBlock(nn.Module):
+    def __init__(self, input_dim, output_dim, norm='none', activation='relu'):
+        super(LinearBlock, self).__init__()
+        use_bias = True
+        # initialize fully connected layer
+        self.fc = nn.Linear(input_dim, output_dim, bias=use_bias)
+
+        # initialize normalization
+        self.norm = Factory.get_normalization(norm, norm_dim=output_dim)        
+
+        # initialize activation
+        self.activation = Factory.get_activation(activation)
+
+    def forward(self, x):
+        out = self.fc(x)
+        if self.norm:
+            out = self.norm(out)
+        if self.activation:
+            out = self.activation(out)
+        return out
+
 ####################################################################################################################
 ############# C O M P O N E N T ######################################----------------------------------------------
 ############# F A C T O R Y ####################--------------------------------------------------------------------
@@ -140,6 +245,124 @@ class Factory:
         else:
             print('Pad type [%s] not recognized' % pad_type)
         return PadLayer
+
+    @staticmethod
+    def get_activation(activation, **kwargs):
+        # initialize activation
+        if isinstance(activation, str):
+            activation = activation.lower()
+
+            if activation == 'relu':
+                return nn.ReLU(inplace=True, **kwargs)
+            elif activation in ['lrelu', 'leaky', 'leakyrelu']:
+                return nn.LeakyReLU(0.2, inplace=True, **kwargs)
+            elif activation == 'prelu':
+                return nn.PReLU(**kwargs)
+            elif activation == 'selu':
+                return nn.SELU(inplace=True, **kwargs)
+            elif activation == 'tanh':                
+                return nn.Tanh(**kwargs)
+            elif activation == 'mish':
+                return Mish(**kwargs)
+            elif activation == 'logcosh':
+                return LogCoshLoss(**kwargs)
+            elif activation == 'xtanh':
+                return XTanhLoss(**kwargs)
+            elif activation == 'xsigmoid':
+                return XSigmoidLoss(**kwargs)
+            elif activation == 'gelu':
+                return nn.GELU(**kwargs)
+            elif activation == 'celu':
+                return nn.CELU(**kwargs)
+            elif activation == "rrelu":
+                return nn.RReLU(**kwargs)
+            elif activation == 'sigmoid':
+                return nn.Sigmoid(**kwargs)
+            elif activation == 'elu':
+                return nn.ELU(**kwargs)
+            elif activation == 'hardshrink':
+                return nn.Hardshrink(**kwargs)
+            elif activation == 'hardtanh':
+                return nn.Hardtanh(**kwargs)
+            elif activation == 'hardswish':
+                return nn.Hardswish(**kwargs)
+            elif activation == 'logsigmoid':
+                return nn.LogSigmoid(**kwargs)
+            elif activation == 'relu6':
+                return nn.Relu6(**kwargs)
+            elif activation == 'softplus':
+                return nn.Softplus(**kwargs)
+            elif activation == 'softshrink':
+                return nn.Softshrink(**kwargs)
+            elif activation == 'softsign':
+                return nn.Softsign(**kwargs)
+            elif activation == 'softmin':
+                return nn.Softmin(**kwargs)
+            elif activation == 'softmax':
+                return nn.Softmax(**kwargs)
+            elif activation == 'softmax2d':
+                return nn.Softmax2d(**kwargs)
+            elif activation == 'logsoftmax':
+                return nn.LogSoftmax(**kwargs)
+            elif activation == 'tanhshrink':
+                return nn.Tanhshrink(**kwargs)
+            elif activation == 'threshold':
+                return nn.Threshold(**kwargs)
+            elif activation == 'none':
+                return nn.Identity()
+            else:
+                assert 0, f"Unsupported activation: {activation}"
+        return nn.Identity()
+
+    @staticmethod
+    def get_normalization(norm, norm_dim=1, **kwargs):
+        if norm in ['bn2d', 'batch', 'bn', 'batchnorm2d', 'batchnorm']:
+            return nn.BatchNorm2d(norm_dim, **kwargs)
+        elif norm in ['bn1d', 'batchnorm1d']:
+            return nn.BatchNorm1d(norm_dim, **kwargs)
+        elif norm in ['bn3d', 'batchnorm3d']:
+            return nn.BatchNorm3d(norm_dim, **kwargs)
+        elif norm in ['group', 'groupnorm', 'gn']:
+            return nn.GroupNorm(norm_dim, **kwargs)
+        elif norm in ['localresponse', 'local', 'localresponsenorm', 'localnorm', 'lr', 'lrn']:
+            return nn.LocalResponseNorm(norm_dim, **kwargs)
+        elif norm in ['in1d', 'instancenorm1d']:
+            return nn.InstanceNorm1d(norm_dim, **kwargs)
+        elif norm in ['in2d', 'inst', 'in', 'instancenorm', 'instancenorm2d']:
+            return nn.InstanceNorm2d(norm_dim, **kwargs)
+        elif norm in ['in3d', 'instancenorm3d']:
+            return nn.InstanceNorm3d(norm_dim, **kwargs)
+        elif norm in ['pixel', 'pn', 'pixelnorm']:
+            return PixelNorm(**kwargs)
+        elif norm in ['act', 'an', 'actnorm']:
+            return ActNorm(**kwargs)
+        elif norm == 'ln':
+            return nn.LayerNorm(norm_dim, **kwargs)
+        elif norm == 'none':
+            return nn.Identity()
+        else:
+            assert 0, f"Unsupported normalization: {norm}"
+        return None
+
+    @staticmethod
+    def make_norm_1d(norm):
+        if isinstance(norm, str):
+            norm = 'batchnorm1d' if norm in ['batchnorm', 'bn', 'bn2d', 'bn3d', 'batch', 'batchnorm2d', 'batchnorm3d'] else norm
+            norm = 'instancenorm1d' if norm in ['instancenorm', 'in', 'in2d', 'in3d', 'instance', 'instancenorm2d', 'instancenorm3d'] else norm
+        return norm
+    @staticmethod
+    def make_norm_2d(norm):
+        if isinstance(norm, str):
+            norm = 'batchnorm2d' if norm in ['batchnorm', 'bn', 'bn1d', 'bn3d', 'batch', 'batchnorm1d', 'batchnorm3d'] else norm
+            norm = 'instancenorm2d' if norm in ['instancenorm', 'in', 'in1d', 'in3d', 'instance', 'instancenorm1d', 'instancenorm3d'] else norm
+        return norm
+    @staticmethod
+    def make_norm_3d(norm):
+        if isinstance(norm, str):
+            norm = 'batchnorm3d' if norm in ['batchnorm', 'bn', 'bn2d', 'bn1d', 'batch', 'batchnorm2d', 'batchnorm1d'] else norm
+            norm = 'instancenorm3d' if norm in ['instancenorm', 'in', 'in2d', 'in1d', 'instance', 'instancenorm2d', 'instancenorm1d'] else norm
+        return norm
+
 # ------------------------------------------------------------------------------------------------------------------
 ####################################################################################################################
 ################################################## Level 0 blocks ##################################################
@@ -197,7 +420,6 @@ class ActNorm(nn.Module):
 
     def inverse(self, z):
         return z * self.scale + self.bias, self.scale.abs().log().sum() * z.shape[2] * z.shape[3]
-
 # ------------------------------------------------------------------------------------------------------------------
 # Layer Norm
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L812
@@ -240,6 +462,20 @@ class GroupedChannelNorm(nn.Module):
         std = x.std(dim=2, keepdim=True)
         x_norm = (x - mean) / (std + 1e-7)
         return x_norm.view(*shape)
+class PixelNorm(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, style, alpha=1e-8):
+        """
+        x - (N x C x H x W)
+        :param x: input activations volume
+        :param alpha: small number for numerical stability
+        :return: y => pixel normalized activations
+        """
+        y = torch.sqrt(torch.mean(x**2, dim=1, keepdim=True) + 1e-8)  # [N1HW]
+        y = x / y  # normalize the input x volume 
+        return y
 ####################################################################################################################
 ###### T R A N S F O R M A T I O N #######--------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------------------------------------
@@ -327,29 +563,6 @@ class HighPass(nn.Module):
     def forward(self, x):
         filter = self.filter.unsqueeze(0).unsqueeze(1).repeat(x.size(1), 1, 1, 1)
         return F.conv2d(x, filter, padding=1, groups=x.size(1))
-
-# ------------------------------------------------------------------------------------------------------------------
-# Relative X,Y Coordinate Values Channel
-# adds coords for each filter location, resulting in size [B,H,W,C+1] - should be the first layer
-# ------------------------------------------------------------------------------------------------------------------
-class CoordConv(nn.Module):
-    """CoordConv layer as in the paper StarGANv2."""
-    def __init__(self, height, width, with_r, with_boundary,
-                 in_channels, first_one=False, *args, **kwargs):
-        super().__init__()
-        self.addcoords = AddCoordsTh(height, width, with_r, with_boundary)
-        in_channels += 2
-        if with_r:
-            in_channels += 1
-        if with_boundary and not first_one:
-            in_channels += 2
-        self.conv = ScaledConv2d(in_channels=in_channels, *args, **kwargs)
-
-    def forward(self, input_tensor, heatmap=None):
-        ret = self.addcoords(input_tensor, heatmap)
-        last_channel = ret[:, -2:, :, :]
-        ret = self.conv(ret)
-        return ret, last_channel
 
 # ------------------------------------------------------------------------------------------------------------------
 # Downsample with Efficient Filters
@@ -615,6 +828,24 @@ class BlurSimple(nn.Module):
 # Learnable Affine Gaussian-ish Transformation
 # Used for fine grain corrective projection after a heavier transform
 # ------------------------------------------------------------------------------------------------------------------
+class LearnableAffineTransform0d(nn.Module):        
+    def __init__(self, scale=512):
+        """ scale matches input and does not change shape, only values
+        """
+        super().__init__()
+
+        #self.A = ScaledLinear(scale[0], scale[1], bias=True)
+        self.weight = nn.Parameter(torch.zeros(1, scale), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(scale), requires_grad=True)
+
+    def forward(self, x):
+        #z = self.A.linear.__dict__['_parameters']['weight_orig'] * x
+        #x = self.A.linear.bias.exp() * x
+        z = self.weight * x
+        x = self.bias.exp() * x
+        z = z + x
+        return z
+
 class LearnableAffineTransform1d(nn.Module):        
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
@@ -624,12 +855,14 @@ class LearnableAffineTransform1d(nn.Module):
         if isinstance(scale, int):
             scale = (scale, scale)
 
-        self.A = ScaledLinear(scale[0], scale[1])
-        self.bias = nn.Parameter(torch.zeros(1, scale[1], scale[1], 1), requires_grad=True)
+        self.A = ScaledLinear(scale[0], scale[1], bias=True)
+        #self.weight = nn.Parameter(torch.zeros(1, 1, scale[1]), requires_grad=True)
+        #self.bias = nn.Parameter(torch.zeros(scale[1]), requires_grad=True)
 
     def forward(self, x):
-        z = self.A(x)
-        x = self.bias.exp() * x
+        z = self.A.linear.__dict__['_parameters']['weight_orig'] * x
+        x = self.A.linear.bias.exp() * x
+      
         z = z + x
         return z
 
@@ -735,7 +968,7 @@ class DiscriminatorBlock(nn.Module):
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, no_antialias=False):
+    def __init__(self, input_nc, scale, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, no_antialias=False):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -743,50 +976,61 @@ class NLayerDiscriminator(nn.Module):
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
         """
-        super(NLayerDiscriminator, self).__init__()
+        super().__init__()
         if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
 
-        kw = 4
+        size = scale
+        kw = 3
         padw = 1
+        stride = 2 if (size % 2) == 0 else 1
         if(no_antialias):
-            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
+            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=stride, padding=padw), nn.LeakyReLU(0.2, True)]
         else:
-            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=1, padding=padw), nn.LeakyReLU(0.2, True), Downsample(ndf)]
+            sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=stride, padding=padw), nn.LeakyReLU(0.2, True)]
+            if stride > 1:
+                sequence += [Downsample(ndf)]
+        size = max(size // stride, 1)
+        stride = 2 if (size % 2) == 0 else 1
         nf_mult = 1
         nf_mult_prev = 1
-        for n in range(1, n_layers):  # gradually increase the number of filters
-            nf_mult_prev = nf_mult
-            nf_mult = min(2 ** n, 8)
-            if(no_antialias):
-                sequence += [
-                    nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=2, padding=padw, bias=use_bias),
-                    norm_layer(ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True)
-                ]
-            else:
+        if n_layers > 1:
+            for n in range(1, n_layers):  # gradually increase the number of filters
+                nf_mult_prev = nf_mult
+                nf_mult = min(2 ** n, 8)
+                if(no_antialias):
+                    sequence += [
+                        nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=stride, padding=padw, bias=use_bias),
+                        norm_layer(ndf * nf_mult),
+                        nn.LeakyReLU(0.2, True)
+                    ]
+                else:
+                    sequence += [
+                        nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
+                        norm_layer(ndf * nf_mult),
+                        nn.LeakyReLU(0.2, True)]
+                    if stride > 1:
+                        sequence += [Downsample(ndf * nf_mult)]
+                
+                size = max(size // stride, 1)
+                stride = 2 if (size % 2) == 0 else 1
+
+                nf_mult_prev = nf_mult
+                nf_mult = min(2 ** n_layers, 8)
                 sequence += [
                     nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
                     norm_layer(ndf * nf_mult),
-                    nn.LeakyReLU(0.2, True),
-                    Downsample(ndf * nf_mult)]
-
-        nf_mult_prev = nf_mult
-        nf_mult = min(2 ** n_layers, 8)
-        sequence += [
-            nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, bias=use_bias),
-            norm_layer(ndf * nf_mult),
-            nn.LeakyReLU(0.2, True)
-        ]
+                    nn.LeakyReLU(0.2, True)
+                ]
 
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         self.model = nn.Sequential(*sequence)
 
-    def forward(self, input):
+    def forward(self, x):
         """Standard forward."""
-        return self.model(input)
+        return self.model(x)
 
 # ------------------------------------------------------------------------------------------------------------------
 # Pixel Segmentation Discriminator
@@ -802,7 +1046,7 @@ class PixelDiscriminator(nn.Module):
             ndf (int)       -- the number of filters in the last conv layer
             norm_layer      -- normalization layer
         """
-        super(PixelDiscriminator, self).__init__()
+        super().__init__()
         if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -829,30 +1073,120 @@ class PixelDiscriminator(nn.Module):
 class PatchDiscriminator(NLayerDiscriminator):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, no_antialias=False):
-        super().__init__(input_nc, ndf, 2, norm_layer, no_antialias)
+    def __init__(self, patch_size, scale, input_nc=3, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, no_antialias=False):
+        super().__init__(input_nc=input_nc, scale=scale, ndf=ndf, n_layers=n_layers, norm_layer=norm_layer, no_antialias=no_antialias)
+        self.patch_size = patch_size
 
-    def forward(self, input):
-        B, C, H, W = input.size(0), input.size(1), input.size(2), input.size(3)
-        size = 16
+    def forward(self, x):
+        B, C, H, W = x.size(0), x.size(1), x.size(2), x.size(3)
+        size = self.patch_size
         Y = H // size
         X = W // size
-        input = input.view(B, C, Y, size, X, size)
-        input = input.permute(0, 2, 4, 1, 3, 5).contiguous().view(B * Y * X, C, size, size)
-        return super().forward(input)
+        x = x.view(B, C, Y, size, X, size)
+        x = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(B * Y * X, C, size, size)
+        return super().forward(x)
+
+# ------------------------------------------------------------------------------------------------------------------
+# Feature Projection for GAN Contrastive Learning using Patches from same image
+# https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L535
+# ------------------------------------------------------------------------------------------------------------------
+class PatchSampleFeatureProjection(nn.Module):
+    def __init__(self, use_mlp=False, init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
+        # potential issues: currently, we use the same patch_ids for multiple images in the batch
+        super().__init__()
+        self.l2norm = Normalize(2)
+        self.use_mlp = use_mlp
+        self.nc = nc  # hard-coded
+        self.mlp_init = False
+        self.init_type = init_type
+        self.init_gain = init_gain
+        self.gpu_ids = gpu_ids
+
+    def create_mlp(self, feats):
+        for mlp_id, feat in enumerate(feats):
+            input_nc = feat.shape[1]
+            mlp = nn.Sequential(*[nn.Linear(input_nc, self.nc), nn.ReLU(), nn.Linear(self.nc, self.nc)])
+            mlp.cuda()
+            setattr(self, 'mlp_%d' % mlp_id, mlp)
+        init_net(self, self.init_type, self.init_gain, self.gpu_ids)
+        self.mlp_init = True
+
+    def forward(self, feats, num_patches=64, patch_ids=None):
+        return_ids = []
+        return_feats = []
+        if self.use_mlp and not self.mlp_init:
+            self.create_mlp(feats)
+        for feat_id, feat in enumerate(feats):
+            B, H, W = feat.shape[0], feat.shape[2], feat.shape[3]
+            feat_reshape = feat.permute(0, 2, 3, 1).flatten(1, 2)
+            if num_patches > 0:
+                if patch_ids is not None:
+                    patch_id = patch_ids[feat_id]
+                else:
+                    patch_id = torch.randperm(feat_reshape.shape[1], device=feats[0].device)
+                    patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]  # .to(patch_ids.device)
+                x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
+            else:
+                x_sample = feat_reshape
+                patch_id = []
+            if self.use_mlp:
+                mlp = getattr(self, 'mlp_%d' % feat_id)
+                x_sample = mlp(x_sample)
+            return_ids.append(patch_id)
+            x_sample = self.l2norm(x_sample)
+
+            if num_patches == 0:
+                x_sample = x_sample.permute(0, 2, 1).reshape([B, x_sample.shape[-1], H, W])
+            return_feats.append(x_sample)
+        return return_feats, return_ids
+
+# ------------------------------------------------------------------------------------------------------------------
+# Encoder for GAN Contrastive Learning using Patches from same image
+# https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L535
+# ------------------------------------------------------------------------------------------------------------------
+class ContentEncoder(nn.Module):
+    def __init__(self, n_downsample, n_res, input_dim, dim, norm, activ, pad_type='zero'):
+        super().__init__()
+        self.model = []
+        self.model += [Conv2dBlock(input_dim, dim, 7, 1, 3, norm=norm, activation=activ, pad_type='reflect')]
+        # downsampling blocks
+        for i in range(n_downsample):
+            self.model += [Conv2dBlock(dim, 2 * dim, 4, 2, 1, norm=norm, activation=activ, pad_type='reflect')]
+            dim *= 2
+        # residual blocks
+        self.model += [ResBlocks(n_res, dim, norm=norm, activation=activ, pad_type=pad_type)]
+        self.model = nn.Sequential(*self.model)
+        self.output_dim = dim
+
+    def forward(self, x, nce_layers=[], encode_only=False):
+        if len(nce_layers) > 0:
+            feat = x
+            feats = []
+            for layer_id, layer in enumerate(self.model):
+                feat = layer(feat)
+                if layer_id in nce_layers:
+                    feats.append(feat)
+                if layer_id == nce_layers[-1] and encode_only:
+                    return None, feats
+            return feat, feats
+        else:
+            return self.model(x), None
+
+        for layer_id, layer in enumerate(self.model):
+            print(layer_id, layer)
 
 ####################################################################################################################
 ############## E N C O D E R #############--------------------------------------------------------------------------
-
 class EncoderBlock(nn.Module):
-    def __init__(self, inp_c, oup_c, code, final=False, blur_downsample=False, fused_scale=True, learn_blur=False):
+    def __init__(self, inp_c, oup_c, code, scale, act='leaky', final=False, blur_downsample=False, fused_scale=True, learn_blur=False):
         super().__init__()
         
         self.final = final
         self.blur_downsample = blur_downsample
         self.learn_blur = learn_blur
 
-        self.learned_affine = set_scale(LearnableAffineTransform2d(scale=oup_c if final else inp_c))
+        if self.learn_blur:
+            self.learned_affine = set_scale(LearnableAffineTransform2d(scale=(oup_c if final else inp_c, scale)))
         
         self.in1 = nn.InstanceNorm2d(inp_c, affine=False)
         self.in2 = nn.InstanceNorm2d(oup_c, affine=False)
@@ -862,12 +1196,13 @@ class EncoderBlock(nn.Module):
         
         if final:
             self.fc = ScaledLinear(inp_c * 4 * 4, oup_c)
-            self.style_mapping2 = ScaledLinear(oup_c, code)
+            self.style_mapping2 = ScaledLinear(code, oup_c)
         else:
             self.conv2 = ScaledConv2d(inp_c, oup_c, kernel_size=3, stride=1, padding=1)    
             self.style_mapping2 = ScaledLinear(2 * oup_c, code)
             
-        self.act = nn.LeakyReLU(0.2)
+        if act:
+            self.act = Factory.get_activation(act)
         self.downsample = nn.AvgPool2d(2, 2)
         
         self.blur = Blur(inp_c)
@@ -898,7 +1233,6 @@ class EncoderBlock(nn.Module):
 
 ####################################################################################################################
 ############ G E N E R A T O R ###########--------------------------------------------------------------------------
-    
 class GeneratorBlock(nn.Module):
     def __init__(self, inp_c, oup_c, code, initial=False, blur_upsample=True, 
                  fused_scale=True, learn_blur=True, learn_residual=False, 
@@ -934,8 +1268,9 @@ class GeneratorBlock(nn.Module):
             self.B1_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
             self.B2_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
         if self.learn_style:
-            self.w1_affine = LearnableAffineTransform1d(scale=code)
-            self.w2_affine = LearnableAffineTransform1d(scale=code)
+            self.w1_affine = LearnableAffineTransform0d(scale=code)
+            self.w2_affine = LearnableAffineTransform0d(scale=code)
+        
         
         # Each Ada PN contains learnable parameters A
         if norm == "pixel":
@@ -955,12 +1290,9 @@ class GeneratorBlock(nn.Module):
         
         self.upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
         self.blur = Blur(inp_c)
-        if act == "leaky":
-            self.activation = nn.LeakyReLU(0.2)
-        elif act == "gelu":
-            self.activation = nn.GELU()
-        elif act == "mish":
-            self.activation = Mish()
+        
+        if act:
+            self.activation = Factory.get_activation(act)        
         
     def forward(self, x, w):
         """
@@ -987,7 +1319,7 @@ class GeneratorBlock(nn.Module):
             x = self.B1_affine(x)   
         if self.learn_style:
             w = self.w1_affine(w)
-        x = self.ada_norm1(x, w)
+        x = self.ada_norm1(x, w)        
         x = self.activation(self.conv2(x))
         
         x = self.B2(x)
@@ -1057,12 +1389,8 @@ class GeneratorSkipBlock(nn.Module):
         
         self.upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
         self.blur = Blur(inp_c)
-        if act == "leaky":
-            self.activation = nn.LeakyReLU(0.2)
-        elif act == "gelu":
-            self.activation = nn.GELU()
-        elif act == "mish":
-            self.activation = Mish()
+        if act:
+            self.activation = Factory.get_activation(act) 
         
     def forward(self, x):
         """
@@ -1092,23 +1420,25 @@ class GeneratorSkipBlock(nn.Module):
 
 ####################################################################################################################
 ###### F E A T U R E -> P R O J E C T I O N -> L A T E N T #######--------------------------------------------------
-
+# ------------------------------------------------------------------------------------------------------------------
+# Feature Projection Network from ALAE, customized
+# ------------------------------------------------------------------------------------------------------------------
 class FeatureProjectionNetwork(nn.Module):
     def __init__(self, code=512, depth=4, norm='none', act='leaky', skip_delay=0, verbose=False):
         super().__init__()
         self.verbose = verbose
         self.code = code
-        self.act = nn.LeakyReLU(0.2)
+        self.act = act
         self.norm = norm
         
         self.f = [BallProjection()]
         for i in range(depth-1):
             if verbose: print(f"[Discriminator]\t Block {i} for {code}d code using norm {norm}, act {act} and a residual skip delay of {skip_delay} (only applies if non zero)")   
+                        
+            layer = self.build_layer(code)
             if skip_delay > 0 and i >= skip_delay:
-                skip = self.disc[i-skip_delay]
-            else:
-                skip = None
-            layer = self.build_layer(code, skip=skip)
+                layer += self.disc[i-skip_delay]
+            
             self.f.extend(layer)
         self.f = self.f + [ScaledLinear(code, code)]
         self.f = nn.Sequential(*self.f)
@@ -1117,19 +1447,10 @@ class FeatureProjectionNetwork(nn.Module):
         layer = []
         layer.append(ScaledLinear(code, code))
 
-        if self.norm == 'batch': 
-            layer.append(nn.BatchNorm1d(code))
-        elif self.norm == 'layer':
-            layer.append(nn.LayerNorm(code))
-        elif self.norm == 'instance':
-            layer.append(nn.InstanceNorm1d(code))
-            
-        if self.act == "gelu":
-            layer.append(nn.GELU())
-        elif self.act == "mish":
-            layer.append(Mish())
-        elif self.act == "leaky":
-            layer.append(nn.LeakyReLU(0.2))
+        if self.norm:
+            layer.append(Factory.get_normalization(Factory.make_norm_1d(self.norm)))
+        if self.act:
+            layer.append(Factory.get_activation(self.act))        
             
         return layer
     
@@ -1153,7 +1474,9 @@ class FeatureProjectionNetwork(nn.Module):
 
 ####################################################################################################################
 ####### D I S C R I M I N A T O R ########--------------------------------------------------------------------------
-                       
+# ------------------------------------------------------------------------------------------------------------------
+# Progressive Discriminator Network from ALAE, customized
+# ------------------------------------------------------------------------------------------------------------------          
 class Discriminator(nn.Module):
     def __init__(self, code=512, depth=3, norm='layer', act='mish', verbose=False):
         super().__init__()
@@ -1172,17 +1495,10 @@ class Discriminator(nn.Module):
         layer = []
         layer.append(ScaledLinear(code, code))
 
-        if self.norm == 'batch': 
-            layer.append(nn.BatchNorm1d(code))
-        elif self.norm == 'layer':
-            layer.append(nn.LayerNorm(code))
-
-        if self.act == "gelu":
-            layer.append(nn.GELU())
-        elif self.act == "mish":
-            layer.append(Mish())
-        elif self.act == "leaky":
-            layer.append(nn.LeakyReLU(0.2))
+        if self.norm:
+            layer.append(Factory.get_normalization(Factory.make_norm_1d(self.norm)))
+        if self.act:
+            layer.append(Factory.get_activation(self.act))  
             
         return layer
         
@@ -1191,7 +1507,9 @@ class Discriminator(nn.Module):
     
 ####################################################################################################################
 ############## E N C O D E R #############--------------------------------------------------------------------------
-    
+# ------------------------------------------------------------------------------------------------------------------
+# Progressive Encoder Network from ALAE, customized
+# ------------------------------------------------------------------------------------------------------------------
 class Encoder(nn.Module):
     def __init__(self, max_fm, code, 
                  blocks={1024:{"enc":[8,8],"rgb":8},
@@ -1221,7 +1539,8 @@ class Encoder(nn.Module):
         self.max_scale = 0
         for i, (scale, settings) in enumerate(blocks.items()):
             if verbose: print(f"[Encoder]\t Block {i} for scale {scale} with settings: {settings}")      
-            encoder_blocks.append(EncoderBlock(max_fm//settings["enc"][0], max_fm//settings["enc"][1], code, 
+            encoder_blocks.append(EncoderBlock(max_fm//settings["enc"][0], max_fm//settings["enc"][1], code,  
+                                               scale=scale,
                                                final=scale==4, 
                                                blur_downsample=blur_downsample, 
                                                learn_blur=learn_blur))
@@ -1285,7 +1604,9 @@ class Encoder(nn.Module):
 
 ####################################################################################################################
 ############ G E N E R A T O R ###########--------------------------------------------------------------------------
-
+# ------------------------------------------------------------------------------------------------------------------
+# Progressive 2d RGB Image Generator Network with Style-normalization Inputs from ALAE, customized
+# ------------------------------------------------------------------------------------------------------------------
 class StyleGenerator(nn.Module):
     def __init__(self, max_fm, code, 
                  blocks={4:{"gen":[1,1],"rgb":1},
@@ -1357,17 +1678,15 @@ class StyleGenerator(nn.Module):
             # of the layer to use for the return value
             norm_layer_nums = return_norm
             return_norm = True
+            norms = []
         n_blocks = int(log2(scale) - 1) # Compute the number of required blocks        
                 
         # Take learnable constant as an input
         inp = self.generator[0].constant
-
-        if return_norm:
-            norms = []
         
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            norm = self.generator[0](inp, w[:, 0])            
+            norm = self.generator[0](inp, w[:, 0]) 
             if return_norm: return [norm]
             else: return self.toRGB[0](norm, upsample=False)
 
@@ -1377,7 +1696,7 @@ class StyleGenerator(nn.Module):
             inp = self.generator[index](inp, w[:, index])
             
             # if returning norm, cut out early
-            if return_norm and index in norm_layer_nums:
+            if (return_norm and index in norm_layer_nums):
                 norms.append(inp)
 
             # Save last 2 scales
@@ -1397,3 +1716,102 @@ class StyleGenerator(nn.Module):
             return norms
         else:
             return inp
+
+# ------------------------------------------------------------------------------------------------------------------
+# Resnet 2D RGB Image Generator Network with Contrastive Feature outputs, from Contrastive Unpaired Style Transfer
+# Used with NCELoss
+# ------------------------------------------------------------------------------------------------------------------
+class ResnetGenerator(nn.Module):
+    """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
+    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
+    """
+
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', no_antialias=False, no_antialias_up=False, opt=None):
+        """Construct a Resnet-based generator
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            output_nc (int)     -- the number of channels in output images
+            ngf (int)           -- the number of filters in the last conv layer
+            norm_layer          -- normalization layer
+            use_dropout (bool)  -- if use dropout layers
+            n_blocks (int)      -- the number of ResNet blocks
+            padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
+        """
+        assert(n_blocks >= 0)
+        super(ResnetGenerator, self).__init__()
+        self.opt = opt
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 norm_layer(ngf),
+                 nn.ReLU(True)]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):  # add downsampling layers
+            mult = 2 ** i
+            if(no_antialias):
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                          norm_layer(ngf * mult * 2),
+                          nn.ReLU(True)]
+            else:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1, bias=use_bias),
+                          norm_layer(ngf * mult * 2),
+                          nn.ReLU(True),
+                          Downsample(ngf * mult * 2)]
+
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):       # add ResNet blocks
+
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_downsampling):  # add upsampling layers
+            mult = 2 ** (n_downsampling - i)
+            if no_antialias_up:
+                model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                             kernel_size=3, stride=2,
+                                             padding=1, output_padding=1,
+                                             bias=use_bias),
+                          norm_layer(int(ngf * mult / 2)),
+                          nn.ReLU(True)]
+            else:
+                model += [Upsample(ngf * mult),
+                          nn.Conv2d(ngf * mult, int(ngf * mult / 2),
+                                    kernel_size=3, stride=1,
+                                    padding=1,  # output_padding=1,
+                                    bias=use_bias),
+                          norm_layer(int(ngf * mult / 2)),
+                          nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, x, layers=[], encode_only=False):
+        if -1 in layers:
+            layers.append(len(self.model))
+        if len(layers) > 0:
+            feat = x
+            feats = []
+            for layer_id, layer in enumerate(self.model):
+                # print(layer_id, layer)
+                feat = layer(feat)
+                if layer_id in layers:
+                    # print("%d: adding the output of %s %d" % (layer_id, layer.__class__.__name__, feat.size(1)))
+                    feats.append(feat)
+                else:
+                    # print("%d: skipping %s %d" % (layer_id, layer.__class__.__name__, feat.size(1)))
+                    pass
+                if layer_id == layers[-1] and encode_only:
+                    # print('encoder only return features')
+                    return feats  # return intermediate features alone; stop in the last layers
+
+            return feat, feats  # return both output and intermediate features
+        else:
+            """Standard forward"""
+            fake = self.model(x)
+            return fake            

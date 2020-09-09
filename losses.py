@@ -215,87 +215,103 @@ def tvArray(x):
     return border
 
 ##negative gram matrix
-def gramMatrix(x,y=None,sq=True,bEnergy=False):
-    if y is None:
-        y = x
+class GramMatrixLoss(nn.Module):
+    def __init__(self, sq=True, bEnergy=False):
+        super().__init__()
+        self.sq = sq
+        self.energy = bEnergy
 
-    B, CE, width, height = x.size()
-    hw = width * height
+    def forward(self, x, y=None):
+        if y is None:
+            y = x
 
-    energy = torch.bmm(x.permute(2, 3, 0, 1).view(hw, B, CE),
-                       y.permute(2, 3, 1, 0).view(hw, CE, B), )
-    energy = energy.permute(1, 2, 0).view(B, B, width, height)
-    if bEnergy:
-        return energy
-    sqX = (x ** 2).sum(1).unsqueeze(0)
-    sqY = (y ** 2).sum(1).unsqueeze(1)
-    d=-2 * energy + sqX + sqY
-    if not sq:
-        return d##debugging
-    gram = -torch.clamp(d, min=1e-10)#.sqrt()
-    return gram
+        B, CE, width, height = x.size()
+        hw = width * height
+
+        energy = torch.bmm(x.permute(2, 3, 0, 1).view(hw, B, CE),
+                        y.permute(2, 3, 1, 0).view(hw, CE, B), )
+        energy = energy.permute(1, 2, 0).view(B, B, width, height)
+        if self.energy:
+            return energy
+        sqX = (x ** 2).sum(1).unsqueeze(0)
+        sqY = (y ** 2).sum(1).unsqueeze(1)
+        d = -2 * energy + sqX + sqY
+        if not self.sq:
+            return d##debugging
+        gram = -torch.clamp(d, min=1e-10)#.sqrt()
+        return gram
+
 ##some image level content loss
-def contentLoss(a, b, netR, loss_type):
-    def nr(x):
-        return (x**2).mean()
-        return x.abs().mean()
+class ContentLoss(nn.Module):
+    def __init__(self, wid=61, sigma=1, loss_type=0):
+        super().__init__()
+        self.wid = wid
+        self.sigma = sigma
+        self.loss_type = loss_type
 
-    if loss_type==0:
-        a = avgG(a)
-        b = avgG(b)
-        return nr(a.mean(1) - b.mean(1))
-    if loss_type==1:
-        a = avgP(a)
-        b = avgP(b)
-        return nr(a.mean(1) - b.mean(1))
+    def forward(self, a, b, netR, loss_type=None):
+        loss_type = loss_type if loss_type else self.loss_type
+        def nr(x):
+            return (x**2).mean()
 
-    if loss_type==10:
-        return nr(netR(a)-netR(b))
+        if loss_type==0:
+            a = self.avgG(a)
+            b = self.avgG(b)
+            return nr(a.mean(1) - b.mean(1))
+        if loss_type==1:
+            a = self.avgP(a)
+            b = self.avgP(b)
+            return nr(a.mean(1) - b.mean(1))
 
-    if loss_type==100:
-        return nr(netR(a)-b)
-    if loss_type == 101:
-        return nr(avgG(netR(a)) - avgG(b))
-    if loss_type == 102:
-        return nr(avgP(netR(a)) - avgP(b))
-    if loss_type == 103:
-        return nr(avgG(netR(a)).mean(1) - avgG(b).mean(1))
+        if loss_type==10:
+            return nr(netR(a)-netR(b))
 
-    raise Exception("NYI")
+        if loss_type==100:
+            return nr(netR(a)-b)
+        if loss_type == 101:
+            return nr(self.avgG(netR(a)) - self.avgG(b))
+        if loss_type == 102:
+            return nr(self.avgP(netR(a)) - self.avgP(b))
+        if loss_type == 103:
+            return nr(self.avgG(netR(a)).mean(1) - self.avgG(b).mean(1))
 
-def GaussKernel(sigma,wid=None):
-    if wid is None:
-        wid =2 * 2 * sigma + 1+10
+        raise Exception("NYI")
 
-    def gaussian(x, mu, sigma):
-        return np.exp(-(float(x) - float(mu)) ** 2 / (2 * sigma ** 2))
-    def make_kernel(sigma):
-        # kernel radius = 2*sigma, but minimum 3x3 matrix
-        kernel_size = max(3, int(wid))
-        kernel_size = min(kernel_size,150)
-        mean = np.floor(0.5 * kernel_size)
-        kernel_1d = np.array([gaussian(x, mean, sigma) for x in range(kernel_size)])
-        # make 2D kernel
-        np_kernel = np.outer(kernel_1d, kernel_1d).astype(dtype=np.float32)
-        # normalize kernel by sum of elements
-        kernel = np_kernel / np.sum(np_kernel)
-        return kernel
-    ker = make_kernel(sigma)
-  
-    a = np.zeros((3,3,ker.shape[0],ker.shape[0])).astype(dtype=np.float32)
-    for i in range(3):
-        a[i,i] = ker
-    return a
+    def avgP(self, x):
+        return nn.functional.avg_pool2d(x, int(16))
     
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-gsigma=1.##how much to blur - larger blurs more ##+"_sig"+str(gsigma)
-gwid=61
-kernel = torch.FloatTensor(GaussKernel(gsigma,wid=gwid)).to(device)
-def avgP(x):
-    return nn.functional.avg_pool2d(x,int(16))
-def avgG(x):
-    pad=nn.functional.pad(x,(gwid//2,gwid//2,gwid//2,gwid//2),'reflect')##last 2 dimensions padded
-    return nn.functional.conv2d(pad,kernel)##reflect pad should avoid border artifacts 
+    def avgG(self, x):
+        kernel = torch.FloatTensor(self.make_gauss_kernel()).to(x.device)
+        n = self.wid//2        
+        pad = nn.functional.pad(x,(n,n,n,n),'reflect')
+        return nn.functional.conv2d(pad,kernel)
+
+    def make_gauss_kernel(self):
+        if self.wid is None:
+            wid = 2 * 2 * self.sigma + 1+10
+        else:
+            wid = self.wid
+
+        def gaussian(x, mu, sigma):
+            return np.exp(-(float(x) - float(mu)) ** 2 / (2 * sigma ** 2))
+
+        def make_kernel(sigma):
+            # kernel radius = 2*sigma, but minimum 3x3 matrix
+            kernel_size = max(3, int(wid))
+            kernel_size = min(kernel_size,150)
+            mean = np.floor(0.5 * kernel_size)
+            kernel_1d = np.array([gaussian(x, mean, sigma) for x in range(kernel_size)])
+            # make 2D kernel
+            np_kernel = np.outer(kernel_1d, kernel_1d).astype(dtype=np.float32)
+            # normalize kernel by sum of elements
+            kernel = np_kernel / np.sum(np_kernel)
+            return kernel
+        ker = make_kernel(self.sigma)
+    
+        a = np.zeros((3, 3, ker.shape[0], ker.shape[0])).astype(dtype=np.float32)
+        for i in range(3):
+            a[i,i] = ker
+        return a
 
 ## SSIM 
 def ssim_loss(x, y):

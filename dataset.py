@@ -80,9 +80,9 @@ class FractalLabel(Dataset):
         return len(self.data)
     
     def __getitem__(self, idx):
-        result = self.transform(Image.open(self.data[idx]).convert('RGB'))
+        result, coords = self.transform(Image.open(self.data[idx]).convert('RGB'))
         label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
-        return result, label
+        return (result, label, coords)
 
 def _get_image_size(img):
     if _is_pil_image(img):
@@ -112,23 +112,14 @@ class MultiCrop:
 
     def __call__(self, x):
         x = self._check_size(x)
-        if self.count >= 10:
-            results = list(TF.ten_crop(x, self.crop_size))
-            remaining = self.count - 10
-            if remaining > 10:
-                for i in range(remaining):
-                    results.append(self._random_crop(x, h, w, i))
-        elif self.count >= 5:
-            results = list(TF.five_crop(x, self.crop_size))
-            remaining = self.count - 5
-            if remaining > 0:
-                for i in range(remaining):
-                    results.append(self._random_crop(x, h, w, i))
-        else:
-            for i in range(self.count):
-                results.append(self._random_crop(x, h, w, i))
+        results = []
+        coords = []
+        for i in range(self.count):
+            data, coord = self._random_crop(x, i)
+            results.append(data)
+            coords.append(coord)
 
-        return self._resize(results)
+        return (self._resize(results), coords)
 
     def _check_size(self, x):
         self.h, self.w = _get_image_size(x)
@@ -162,28 +153,43 @@ class MultiCrop:
         pw = int(self.w * self.crop_pad * ratio_w)
         # calculate available space left over after crop and padding (max x/y)
         available_h = self.h - th - ph
-        available_w = self.w - tw - pw   
+        available_w = self.w - tw - pw  
+        padding_h = padding_w = 0         
         if available_h < th:
-            padding_h = th - available_h
+            # this much extra room needed in height
+            padding_h = th - available_h            
         if available_w < tw:
+            # this many extra pixels needed in width
             padding_w = tw - available_w
+        available_h += padding_h
+        available_w += padding_w
 
-        if available_h > 0:
-            #max_h = available_h
-            #min_h = pw
+        if available_h > 0 and available_h > pw:
             mod_h = random.randint(pw, available_h)
-        if available_w > 0:
-            #max_w = available_w
-            #min_w = ph
+        if available_w > 0 and available_w > ph:
             mod_w = random.randint(ph, available_w)
 
-        return TF.crop(x, mod_h, mod_w, mod_h + th, mod_w + tw)
+        x1, y1, x2, y2 = mod_h, mod_w, mod_h + th - padding_h, mod_w + tw - padding_w
+        return TF.crop(x, x1, y1, x2, y2), (x1, y1, x2, y2)
 
     def _resize(self, results):
         resized = []
         for result in results:
             resized.append(result.resize((self.resize_size, self.resize_size)))
         return resized
+
+class BuildOutput:
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+    def __call__(self, x):   
+        y = x[1] 
+        x = x[0]
+        data = torch.stack([transforms.Normalize(self.mean, self.std, inplace=True)(
+            torch.from_numpy(np.array(crop, np.float32, copy=False).transpose((2, 0, 1))).contiguous()) for crop in x])
+        label = torch.Tensor(y)
+
+        return data, label
 
 def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode=5, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
     transform_list = []             
@@ -192,7 +198,7 @@ def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512
     transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
     transform_list.append(transforms.RandomGrayscale(p=0.1))     
     transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
-    transform_list.append(transforms.Lambda(lambda crops: torch.stack([transforms.Normalize(mean, std, inplace=True)(torch.from_numpy(np.array(crop, np.float32, copy=False).transpose((2, 0, 1))).contiguous()) for crop in crops])))
+    transform_list.append(BuildOutput(mean, std))
     
     
     dataset.transform = transforms.Compose(transform_list)
