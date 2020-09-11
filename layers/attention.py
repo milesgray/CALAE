@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 # ATT_U-Net's Attention module
-class Attention_block(nn.Module):
+class Attention(nn.Module):
     # 128*128*512
     # F_g, F_l are equal in size and larger than the output, F_int channel is half of them (512, 512, 256)
     def  __init__(self, F_g, F_l, F_int):  # Channel F_g: Large size input F_l: Front-level input F_int: half of their channel
@@ -31,10 +31,10 @@ class Attention_block(nn.Module):
         x1 = self.W_x(x)                            # Xl branch output 128*128*256    
         psi = self.relu(g1 + x1)                    # Add 2 channels of information 128*128*256
         psi = self.psi(psi)                         # output       128*128*1 
-        return  x * psi                             # Multiply the feature map by 128*128*512
+        return x * psi                             # Multiply the feature map by 128*128*512
 
 # self-attention module (use standard convolution instead of spectral normalization)
-class Self_Attn(nn.Module):
+class SelfAttention(nn.Module):
     """ Self attention Layer"""
     def  __init__(self, in_dim, activation):                                                      # constructor
         super().__init__()
@@ -48,7 +48,7 @@ class Self_Attn(nn.Module):
 
         self.softmax = nn.Softmax(dim=-1)  # softmax is formed after att_map
     
-    def forward(self,x):
+    def forward(self, x):
         """
             inputs :
                 x : input feature maps( B X C X W X H)
@@ -57,14 +57,14 @@ class Self_Attn(nn.Module):
                 attention: B X N X N (N is Width*Height)
         """
         m_batchsize, C, width, height = x.size()    # X: B*C*W*H Get the dimension information of B, C, W, H
-        proj_query  = Self.query_conv(X). View(m_batchsize, -.1, width * height). permute(0, 2, .1) # B X (C /. 8) X (* W is H) feature the convolution Q Stretched to two dimensions, B*C*(H*W), then transposed B*(H*W)*C
-        proj_key =  Self.key_conv(X). View(m_batchsize, -.1, width * height)    # B X (C /. 8) X (* W is H) after the characteristic K for the two-dimensional convolution of elongated, B * C*(H*W)
-        energy =  torch.bmm(proj_query,proj_key)    # transpose check  B*(H*W)*(H*W)
+        proj_query = self.query_conv(x).view(m_batchsize, -1, width * height). permute(0, 2, 1) # B X (C /. 8) X (* W is H) feature the convolution Q Stretched to two dimensions, B*C*(H*W), then transposed B*(H*W)*C
+        proj_key = self.key_conv(x).view(m_batchsize, -1, width * height)    # B X (C /. 8) X (* W is H) after the characteristic K for the two-dimensional convolution of elongated, B * C*(H*W)
+        energy = torch.bmm(proj_query, proj_key)    # transpose check  B*(H*W)*(H*W)
         attention = self.softmax(energy)            # B x (N) x (N) 
-        proj_value = Self.value_conv(X). View(m_batchsize, -.1, width * height)     # B X C X N V characteristics after the 2-dimensional convolution of elongated, B * C * (H * W)
+        proj_value = self.value_conv(x).view(m_batchsize, -1, width * height)     # B X C X N V characteristics after the 2-dimensional convolution of elongated, B * C * (H * W)
 
         out = torch.bmm(proj_value, attention.permute(0, 2, 1))    # Multiply V and attention_map (B*C*N)(B*N*N) = B*C*N
         out = out.view(m_batchsize, C, width, height)       # Restore to the original image B*C*H*W
         
-        out = self.gamma * out  +  x  # Calculate the residual weight parameter as self.gamma If the residual is 0, it is the identity mapping
-        return  out     #attention # Return 1.attention residual result 2.N*N attention map (what's the point)
+        out = self.gamma * out + x  # Calculate the residual weight parameter as self.gamma If the residual is 0, it is the identity mapping
+        return out     #attention # Return 1.attention residual result 2.N*N attention map (what's the point)

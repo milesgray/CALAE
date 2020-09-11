@@ -21,6 +21,7 @@ from metrics.perceptual import PerceptualLoss
 from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
 import losses
 from layers.activations import Mish
+from layers.attention import Attention, SelfAttention
 
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -1111,7 +1112,7 @@ class PatchSampleFeatureProjection(nn.Module):
                     patch_id = torch.randperm(feat_reshape.shape[1], device=feats[0].device)
                     patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]  # .to(patch_ids.device)
                 if self.use_percept:
-                    x_sample = self.percept(x_sample)
+                    x_sample = self.percept(x_sample[:, patch_id, :])
                 else:
                     x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
             else:
@@ -1704,6 +1705,19 @@ class StyleGenerator(nn.Module):
             return norms
         else:
             return inp
+
+
+class UNetStyle(nn.Module):
+    def __init__(self, g_params, e_params, f_params, verbose=False):
+        super().__init__()
+        self.encoder = Encoder(**e_params)
+        self.generator = StyleGenerator(**g_params)
+        self.projector = FeatureProjectionNetwork(**f_params)
+        self.verbose = verbose
+
+    def forward(self, x, w=None, scale, alpha, mode='enc-dec'):
+        if mode == 'enc-dec':
+            
 
 # ------------------------------------------------------------------------------------------------------------------
 # Resnet 2D RGB Image Generator Network with Contrastive Feature outputs, from Contrastive Unpaired Style Transfer

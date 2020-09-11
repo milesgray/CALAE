@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 
 from .activations import Mish, LogCosh, XTanh, XSigmoid
+from .normalize import ActNorm, PixelNorm, GroupedChannelNorm, LayerNorm, SwitchNorm
 
 class Factory:
     @staticmethod
@@ -131,6 +132,8 @@ class Factory:
             return ActNorm(**kwargs)
         elif norm == 'ln':
             return nn.LayerNorm(norm_dim, **kwargs)
+        elif norm in ['switch', 'sn', 'switchnorm']:
+            return SwitchNorm(norm_dim, **kwargs)
         elif norm == 'none':
             return nn.Identity()
         else:
