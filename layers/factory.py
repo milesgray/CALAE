@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from .activations import Mish, LogCoshLoss, XTanhLoss, XSigmoidLoss
+from .activations import Mish, LogCosh, XTanh, XSigmoid
 
 class Factory:
     @staticmethod
@@ -58,11 +58,11 @@ class Factory:
             elif activation == 'mish':
                 return Mish(**kwargs)
             elif activation == 'logcosh':
-                return LogCoshLoss(**kwargs)
+                return LogCosh(**kwargs)
             elif activation == 'xtanh':
-                return XTanhLoss(**kwargs)
+                return XTanh(**kwargs)
             elif activation == 'xsigmoid':
-                return XSigmoidLoss(**kwargs)
+                return XSigmoid(**kwargs)
             elif activation == 'gelu':
                 return nn.GELU(**kwargs)
             elif activation == 'celu':

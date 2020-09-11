@@ -7,6 +7,7 @@ from torch.autograd import Function
 from torch.nn import functional as F
 import numpy as np
 
+from switch_norm import SwitchNorm1d, SwitchNorm2d, SwitchNorm3d
 
 ####################################################################################################################
 ###### N O R M A L I Z A T I O N #########--------------------------------------------------------------------------
@@ -90,3 +91,22 @@ class PixelNorm(nn.Module):
         y = torch.sqrt(torch.mean(x**2, dim=1, keepdim=True) + 1e-8)  # [N1HW]
         y = x / y  # normalize the input x volume 
         return y
+# ------------------------------------------------------------------------------------------------------------------
+# Switchable Norm
+# Switchable Normalization is a normalization technique that is able to learn different normalization operations for different normalization layers in a deep neural network in an end-to-end manner.
+# https://github.com/switchablenorms/Switchable-Normalization
+# ---------------------------------------------------------------------------------------------------
+class SwitchNorm:
+    def __init__(self, dims, num_features, eps=1e-5, momentum=0.997, using_moving_average=True):
+        if dims == 1:
+            self.norm = SwitchNorm1d(num_features, eps=eps, momentum=momentum, using_moving_average=using_moving_average)
+        if dims == 2:
+            self.norm = SwitchNorm2d(num_features, eps=eps, momentum=momentum, using_moving_average=using_moving_average)
+        if dims == 3:
+            self.norm = SwitchNorm3d(num_features, eps=eps, momentum=momentum, using_moving_average=using_moving_average)
+        
+    def reset_parameters(self):
+        self.norm.reset_parameters()
+
+    def forward(self, x):
+        return self.norm.forward(x)

@@ -17,10 +17,12 @@ from torch.autograd import Function
 from torch.nn import functional as F
 
 from models.unet import *
-
+from metrics.perceptual import PerceptualLoss
 from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
 import losses
-from activations import Mish
+from layers.activations import Mish
+
+# ------------------------------------------------------------------------------------------------------------------
 
 def init_weights(net, init_type='normal', init_gain=0.02, debug=False):
     """Initialize network weights.
@@ -54,7 +56,6 @@ def init_weights(net, init_type='normal', init_gain=0.02, debug=False):
 
     net.apply(init_func)  # apply the initialization function <init_func>
 
-
 def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[], debug=False, initialize_weights=True):
     """Initialize a network: 1. register CPU/GPU device (with multi-GPU support); 2. initialize the network weights
     Parameters:
@@ -73,7 +74,6 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[], debug=False, i
         init_weights(net, init_type, init_gain=init_gain, debug=debug)
     return net
 
-# ------------------------------------------------------------------------------------------------------------------
 def cat_feature(x, y):
     y_expand = y.view(y.size(0), y.size(1), 1, 1).expand(
         y.size(0), y.size(1), x.size(2), x.size(3))
@@ -82,6 +82,8 @@ def cat_feature(x, y):
 
 def downscale2d(x, factor=2):
     return F.avg_pool2d(x, factor, factor)
+
+# ------------------------------------------------------------------------------------------------------------------
 
 class Normalize(nn.Module):
     def __init__(self, power=2):
@@ -159,7 +161,6 @@ class StridedConvF(nn.Module):
         if use_instance_norm:
             x = F.instance_norm(x)
         return self.l2_norm(x)
-
 
 class Conv2dBlock(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size, stride,
@@ -367,32 +368,6 @@ class Factory:
 ####################################################################################################################
 ################################################## Level 0 blocks ##################################################
 ####################################################################################################################
-class Identity(nn.Module):
-    def forward(self, x):
-        return x
-####################################################################################################################
-############### L O S S ##################--------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------------------------------------
-class LogCoshLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):
-        return losses.logcosh(y_t, y_prime_t)
-
-class XTanhLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):        
-        return losses.xtanh(y_t, y_prime_t)
-
-class XSigmoidLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):
-        return losses.xsigmoid(y_t, y_prime_t)
 
 ####################################################################################################################
 ###### N O R M A L I Z A T I O N #########--------------------------------------------------------------------------
@@ -1091,16 +1066,26 @@ class PatchDiscriminator(NLayerDiscriminator):
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L535
 # ------------------------------------------------------------------------------------------------------------------
 class PatchSampleFeatureProjection(nn.Module):
-    def __init__(self, use_mlp=False, init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
+    def __init__(self, scale, use_perceptual=False, use_mlp=False, init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
         # potential issues: currently, we use the same patch_ids for multiple images in the batch
         super().__init__()
+        self.scale = scale
         self.l2norm = Normalize(2)
-        self.use_mlp = use_mlp
+        self.use_mlp = use_mlp        
         self.nc = nc  # hard-coded
         self.mlp_init = False
         self.init_type = init_type
         self.init_gain = init_gain
         self.gpu_ids = gpu_ids
+        self.use_percept = use_perceptual
+        percep_layer_lookup = {
+            4: 3,
+            8: 8,
+            16: 15,
+            32: 22
+        }
+        if self.use_percept:
+            self.percept = PerceptualLoss(ilayer=percep_layer_lookup[scale])
 
     def create_mlp(self, feats):
         for mlp_id, feat in enumerate(feats):
@@ -1125,7 +1110,10 @@ class PatchSampleFeatureProjection(nn.Module):
                 else:
                     patch_id = torch.randperm(feat_reshape.shape[1], device=feats[0].device)
                     patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]  # .to(patch_ids.device)
-                x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
+                if self.use_percept:
+                    x_sample = self.percept(x_sample)
+                else:
+                    x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
             else:
                 x_sample = feat_reshape
                 patch_id = []

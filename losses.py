@@ -7,12 +7,10 @@ import torch.nn.functional as F
 from torch.autograd import grad
  
 from typing import List, Callable, Union, Any, TypeVar, Tuple
-# from torch import tensor as Tensor
 
 Tensor = TypeVar('torch.tensor')
 from hessian_penalty import hessian_penalty
-
-import colors
+from metrics.perceptual import PerceptualLoss
 
 def zero_centered_gradient_penalty(real_samples, real_prediction):
     """
@@ -49,6 +47,24 @@ def loss_discriminator(E, D, alpha, real_samples, fake_samples, gamma=10, use_bc
             loss += hessian_penalty(E, z=fake_samples, G_z=E_f, alpha=alpha, return_norm=layer)
     return loss
 
+def loss_discriminator_patch(D, real_samples, fake_samples, gamma=10, use_bce=False,
+                       enable_hessian_real=False, enable_hessian_fake=False, 
+                       hessian_layers_fake=[-2], hessian_layers_real=[-2]):
+    real_prediction = D(real_samples)
+    fake_prediction = D(fake_samples)
+
+    if use_bce:
+        loss = adv_loss(real_prediction, 1)
+        loss += adv_loss(fake_prediction, 0)
+    else:
+        # Minimize negative = Maximize positive (Minimize incorrect D predictions for real data,
+        #                                        minimize incorrect D predictions for fake data)
+        loss = (F.softplus(-real_prediction) + F.softplus(fake_prediction)).mean()
+
+    if gamma > 0:
+        loss += zero_centered_gradient_penalty(real_samples, real_prediction).mul(gamma/2)
+    return loss
+
 def loss_generator(E, D, alpha, fake_samples, enable_hessian=True, hessian_layers=[-1,-2], current_layer=[-1], hessian_weight=0.01):
     # Hessian applied to E here
     # Minimize negative = Maximize positive (Minimize correct D predictions for fake data)
@@ -83,12 +99,17 @@ def loss_generator_hessian(G, F_z, scale, alpha,
         loss += h_loss
     return loss           
 
-def loss_generator_consistency(fake, real, loss_fn=None, 
+def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
                                use_ssim=True, ssim_weight=1, use_ssim_tv=False,
                                use_sobel=True, sobel_weight=1,
                                use_sobel_tv=False, sobel_fn=None):
     if loss_fn:
-        loss = loss_fn(fake, real)
+        if use_perceptual:
+            scale = fake.shape[2]
+            p_func = perceptual_loss[scale]
+            loss = loss_fn(p_func(fake), p_func(real))
+        else:
+            loss = loss_fn(fake, real)
     else:
         loss = 0       
     if use_ssim:
@@ -194,8 +215,32 @@ def adv_loss(logits, target):
     loss = F.binary_cross_entropy_with_logits(logits, targets)
     return loss
 
+####################################################################################################################
+############### P E R C E P T U A L ##################--------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
+percep_layer_lookup = {
+    4: 4,
+    8: 9,
+    16: 16,
+    32: 23
+}
+perceptual_loss = {
+    4: PerceptualLoss(ilayer=percep_layer_lookup[4]),
+    8: PerceptualLoss(ilayer=percep_layer_lookup[8]),
+    16: PerceptualLoss(ilayer=percep_layer_lookup[16]),
+    32: PerceptualLoss(ilayer=percep_layer_lookup[32]),
+}
+def percep_loss(x, y, scale):
+    loss = perceptual_loss[scale](x) - perceptual_loss[scale](y)
+    loss = loss.pow(2)
+    loss = loss.mean()
+    return loss
+
+# ------------------------------------------------------------------------------------------------------------------
 ### FAMOS losses - https://github.com/zalandoresearch/famos/blob/master/utils.py
-## Total Variation
+####################################################################################################################
+############### T O T A L  V A R I A T I O N ##################-----------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 def tv_loss(x, y):
     loss = total_variation(x) + total_variation(y)
     loss = loss.sum()
@@ -214,106 +259,9 @@ def tvArray(x):
     border = torch.cat([border1, border2], 1)
     return border
 
-##negative gram matrix
-class GramMatrixLoss(nn.Module):
-    def __init__(self, sq=True, bEnergy=False):
-        super().__init__()
-        self.sq = sq
-        self.energy = bEnergy
-
-    def forward(self, x, y=None):
-        if y is None:
-            y = x
-
-        B, CE, width, height = x.size()
-        hw = width * height
-
-        energy = torch.bmm(x.permute(2, 3, 0, 1).view(hw, B, CE),
-                        y.permute(2, 3, 1, 0).view(hw, CE, B), )
-        energy = energy.permute(1, 2, 0).view(B, B, width, height)
-        if self.energy:
-            return energy
-        sqX = (x ** 2).sum(1).unsqueeze(0)
-        sqY = (y ** 2).sum(1).unsqueeze(1)
-        d = -2 * energy + sqX + sqY
-        if not self.sq:
-            return d##debugging
-        gram = -torch.clamp(d, min=1e-10)#.sqrt()
-        return gram
-
-##some image level content loss
-class ContentLoss(nn.Module):
-    def __init__(self, wid=61, sigma=1, loss_type=0):
-        super().__init__()
-        self.wid = wid
-        self.sigma = sigma
-        self.loss_type = loss_type
-
-    def forward(self, a, b, netR, loss_type=None):
-        loss_type = loss_type if loss_type else self.loss_type
-        def nr(x):
-            return (x**2).mean()
-
-        if loss_type==0:
-            a = self.avgG(a)
-            b = self.avgG(b)
-            return nr(a.mean(1) - b.mean(1))
-        if loss_type==1:
-            a = self.avgP(a)
-            b = self.avgP(b)
-            return nr(a.mean(1) - b.mean(1))
-
-        if loss_type==10:
-            return nr(netR(a)-netR(b))
-
-        if loss_type==100:
-            return nr(netR(a)-b)
-        if loss_type == 101:
-            return nr(self.avgG(netR(a)) - self.avgG(b))
-        if loss_type == 102:
-            return nr(self.avgP(netR(a)) - self.avgP(b))
-        if loss_type == 103:
-            return nr(self.avgG(netR(a)).mean(1) - self.avgG(b).mean(1))
-
-        raise Exception("NYI")
-
-    def avgP(self, x):
-        return nn.functional.avg_pool2d(x, int(16))
-    
-    def avgG(self, x):
-        kernel = torch.FloatTensor(self.make_gauss_kernel()).to(x.device)
-        n = self.wid//2        
-        pad = nn.functional.pad(x,(n,n,n,n),'reflect')
-        return nn.functional.conv2d(pad,kernel)
-
-    def make_gauss_kernel(self):
-        if self.wid is None:
-            wid = 2 * 2 * self.sigma + 1+10
-        else:
-            wid = self.wid
-
-        def gaussian(x, mu, sigma):
-            return np.exp(-(float(x) - float(mu)) ** 2 / (2 * sigma ** 2))
-
-        def make_kernel(sigma):
-            # kernel radius = 2*sigma, but minimum 3x3 matrix
-            kernel_size = max(3, int(wid))
-            kernel_size = min(kernel_size,150)
-            mean = np.floor(0.5 * kernel_size)
-            kernel_1d = np.array([gaussian(x, mean, sigma) for x in range(kernel_size)])
-            # make 2D kernel
-            np_kernel = np.outer(kernel_1d, kernel_1d).astype(dtype=np.float32)
-            # normalize kernel by sum of elements
-            kernel = np_kernel / np.sum(np_kernel)
-            return kernel
-        ker = make_kernel(self.sigma)
-    
-        a = np.zeros((3, 3, ker.shape[0], ker.shape[0])).astype(dtype=np.float32)
-        for i in range(3):
-            a[i,i] = ker
-        return a
-
-## SSIM 
+####################################################################################################################
+############### S S I M ##################--------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------ 
 def ssim_loss(x, y):
     loss = 1 - ssim(x, y)
     loss = loss / 2
@@ -340,7 +288,6 @@ def create_window(window_size, channel=1):
     _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
     window = _2D_window.expand(channel, 1, window_size, window_size).contiguous()
     return window
-
 
 def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False, val_range=2):
     # Value range can be different from 255. Other common ranges are 1 (sigmoid) and 2 (tanh).
@@ -419,7 +366,9 @@ def msssim(img1, img2, window_size=11, size_average=True, val_range=2, normalize
     output = torch.prod(pow1[:-1] * pow2[-1])
     return output
 
-## Sobel
+####################################################################################################################
+############### S O B E L ##################------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 def ssim_sobel_loss(x, y, window_size=11, size_average=True, val_range=2, normalize=True):
     x_sobel = sobel(x)
     y_sobel = sobel(y)   
@@ -491,15 +440,12 @@ def sobel_grad(img, stride=1, padding=1):
     grad_y = conv2(img)
     return grad_y, grad_x
 
-## Original 
-
+## ALAE Official 
 def kl(mu, log_var):
     return -0.5 * torch.mean(torch.mean(1 + log_var - mu.pow(2) - log_var.exp(), 1))
 
-
 def reconstruction(recon_x, x, lod=None):
     return torch.mean((recon_x - x)**2)
-
 
 def discriminator_logistic_simple_gp(d_result_fake, d_result_real, reals, r1_gamma=10.0):
     loss = (torch.nn.functional.softplus(d_result_fake) + torch.nn.functional.softplus(-d_result_real))
@@ -511,10 +457,184 @@ def discriminator_logistic_simple_gp(d_result_fake, d_result_real, reals, r1_gam
         loss = loss + r1_penalty * (r1_gamma * 0.5)
     return loss.mean()
 
-
 def discriminator_gradient_penalty(d_result_real, reals, r1_gamma=10.0):
     real_loss = d_result_real.sum()
     real_grads = torch.autograd.grad(real_loss, reals, create_graph=True, retain_graph=True)[0]
     r1_penalty = torch.sum(real_grads.pow(2.0), dim=[1, 2, 3])
     loss = r1_penalty * (r1_gamma * 0.5)
     return loss.mean()
+
+####################################################################################################################
+############### M O D U L E S ##################--------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
+class LogCoshLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, y_t, y_prime_t):
+        return losses.logcosh(y_t, y_prime_t)
+
+class XTanhLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, y_t, y_prime_t):        
+        return losses.xtanh(y_t, y_prime_t)
+
+class XSigmoidLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, y_t, y_prime_t):
+        return losses.xsigmoid(y_t, y_prime_t)
+
+class ContentLoss(nn.Module):
+    def __init__(self, wid=61, sigma=1, loss_type=0):
+        super().__init__()
+        self.wid = wid
+        self.sigma = sigma
+        self.loss_type = loss_type
+
+    def forward(self, a, b, netR, loss_type=None):
+        loss_type = loss_type if loss_type else self.loss_type
+        def nr(x):
+            return (x**2).mean()
+
+        if loss_type==0:
+            a = self.avgG(a)
+            b = self.avgG(b)
+            return nr(a.mean(1) - b.mean(1))
+        if loss_type==1:
+            a = self.avgP(a)
+            b = self.avgP(b)
+            return nr(a.mean(1) - b.mean(1))
+
+        if loss_type==10:
+            return nr(netR(a)-netR(b))
+
+        if loss_type==100:
+            return nr(netR(a)-b)
+        if loss_type == 101:
+            return nr(self.avgG(netR(a)) - self.avgG(b))
+        if loss_type == 102:
+            return nr(self.avgP(netR(a)) - self.avgP(b))
+        if loss_type == 103:
+            return nr(self.avgG(netR(a)).mean(1) - self.avgG(b).mean(1))
+
+        raise Exception("NYI")
+
+    def avgP(self, x):
+        return nn.functional.avg_pool2d(x, int(16))
+    
+    def avgG(self, x):
+        kernel = torch.FloatTensor(self.make_gauss_kernel()).to(x.device)
+        n = self.wid//2        
+        pad = nn.functional.pad(x,(n,n,n,n),'reflect')
+        return nn.functional.conv2d(pad,kernel)
+
+    def make_gauss_kernel(self):
+        if self.wid is None:
+            wid = 2 * 2 * self.sigma + 1+10
+        else:
+            wid = self.wid
+
+        def gaussian(x, mu, sigma):
+            return np.exp(-(float(x) - float(mu)) ** 2 / (2 * sigma ** 2))
+
+        def make_kernel(sigma):
+            # kernel radius = 2*sigma, but minimum 3x3 matrix
+            kernel_size = max(3, int(wid))
+            kernel_size = min(kernel_size,150)
+            mean = np.floor(0.5 * kernel_size)
+            kernel_1d = np.array([gaussian(x, mean, sigma) for x in range(kernel_size)])
+            # make 2D kernel
+            np_kernel = np.outer(kernel_1d, kernel_1d).astype(dtype=np.float32)
+            # normalize kernel by sum of elements
+            kernel = np_kernel / np.sum(np_kernel)
+            return kernel
+        ker = make_kernel(self.sigma)
+    
+        a = np.zeros((3, 3, ker.shape[0], ker.shape[0])).astype(dtype=np.float32)
+        for i in range(3):
+            a[i,i] = ker
+        return a
+
+class GramMatrixLoss(nn.Module):
+    def __init__(self, sq=True, bEnergy=False):
+        super().__init__()
+        self.sq = sq
+        self.energy = bEnergy
+
+    def forward(self, x, y=None):
+        if y is None:
+            y = x
+
+        B, CE, width, height = x.size()
+        hw = width * height
+
+        energy = torch.bmm(x.permute(2, 3, 0, 1).view(hw, B, CE),
+                        y.permute(2, 3, 1, 0).view(hw, CE, B), )
+        energy = energy.permute(1, 2, 0).view(B, B, width, height)
+        if self.energy:
+            return energy
+        sqX = (x ** 2).sum(1).unsqueeze(0)
+        sqY = (y ** 2).sum(1).unsqueeze(1)
+        d = -2 * energy + sqX + sqY
+        if not self.sq:
+            return d##debugging
+        gram = -torch.clamp(d, min=1e-10)#.sqrt()
+        return gram
+
+
+class AutoEncoderLoss(nn.Module):
+    def __init__(self, loss_fn, use_tv=False, use_dist=False, enable_hessian=False, hessian_weight=0.01):
+        super().__init__()
+        self.loss_fn = loss_fn
+        self.use_tv = use_tv
+        self.use_dist = use_dist
+        self.enable_hessian = enable_hessian
+        self.hessian_weight = hessian_weight
+        self.p_dist = nn.PairwiseDistance(p=2.0, eps=1e-06, keepdim=False)
+
+    def forward(self, F, G, E, scale, alpha, z, 
+                labels=None, hessian_layers=[3], 
+                current_layer=[0]):        
+        F_z = F(z, scale, z2=None, p_mix=0)
+        
+        # Autoencoding loss in latent space
+        G_z = G(F_z, scale, alpha)
+        E_z = E(G_z, alpha)
+        
+        if labels is not None:
+            E_z = E_z.reshape(E_z.shape[0], 1, E_z.shape[1]).repeat(1, F_z.shape[1], 1)
+            if self.use_dist:
+                x = self.p_dist(F_z, E_z)
+                y = torch.eq(labels, labels.T).float().to(x.device)
+                loss = self.loss_fn(x, y)
+            else:
+                perm = torch.randperm(E_z.shape[0], device=E_z.device)
+                E_z_hat = torch.index_select(E_z, 0, perm)
+                F_z_hat = torch.index_select(F_z, 0, perm)
+                F_hat = torch.cat([F_z, F_x_hat], 0)
+                E_hat = torch.cat([E_z, E_z_hat], 0)
+                loss = self.loss_fn(F_hat, E_hat, labels)
+        else:
+            F_x = F_z[:,0,:]
+            loss = self.loss_fn(F_x, E_z)
+
+        if self.use_tv:
+            loss += self.total_variation(G_z)
+        
+        # Hessian applied to G here
+        if self.enable_hessian:
+            h_loss = hessian_penalty(G, z=F_z, scale=scale, alpha=alpha, return_norm=hessian_layers) 
+            h_loss *= self.hessian_weight
+            if current_layer in hessian_layers:
+                h_loss = h_loss * alpha
+            loss += h_loss
+        return loss
+    
+    @staticmethod
+    def total_variation(y):
+        return torch.mean(torch.abs(y[:, :, :, :-1] - y[:, :, :, 1:])) \
+            + torch.mean(torch.abs(y[:, :, :-1, :] - y[:, :, 1:, :]))

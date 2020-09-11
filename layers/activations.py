@@ -1,19 +1,18 @@
 '''
-Applies the mish function element-wise:
-mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
+Custom Activation Functions
 '''
 from torch import nn
 import torch
 import torch.nn.functional as F
 
 @torch.jit.script
-def mish(input):
+def mish(x):
     '''
     Applies the mish function element-wise:
     mish(x) = x * tanh(softplus(x)) = x * tanh(ln(1 + exp(x)))
     See additional documentation for mish class.
     '''
-    return input * torch.tanh(F.softplus(input))
+    return x * torch.tanh(F.softplus(x))
 
 class Mish(nn.Module):
     '''
@@ -40,40 +39,38 @@ class Mish(nn.Module):
         '''
         return mish(input)
 
-def logcosh(x, y):
-    diff = x - y
-    loss = (diff + 1e-12).cosh().log()
-    return loss.mean()
+@torch.jit.script
+def logcosh(x):
+    return torch.cosh(x + 1e-12).log()
 
-def xtanh(x, y):
-    diff = x - y
-    loss = diff.tanh() * diff
-    return loss.mean()
-
-def xsigmoid(x, y):
-    diff = x - y
-    loss = 1 + (-diff).exp()
-    loss = loss - diff
-    loss = 2 * diff / loss
-    return loss.mean()
-
-class LogCoshLoss(torch.nn.Module):
+class LogCosh(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_t, y_prime_t):
-        return logcosh(y_t, y_prime_t)
+    def forward(self, x):
+        return logcosh(x)
 
-class XTanhLoss(torch.nn.Module):
+@torch.jit.script
+def xtanh(x):
+    return torch.tanh(x) * x
+
+class XTanh(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_t, y_prime_t):        
-        return xtanh(y_t, y_prime_t)
+    def forward(self, x):        
+        return xtanh(x)
 
-class XSigmoidLoss(torch.nn.Module):
+@torch.jit.script
+def xsigmoid(x):
+    y = 1 + torch.exp(-x)
+    y = torch.abs(y - x)
+    z = 2 * y / x
+    return z
+
+class XSigmoid(torch.nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, y_t, y_prime_t):
-        return xsigmoid(y_t, y_prime_t)
+    def forward(self, x):
+        return xsigmoid(x)
