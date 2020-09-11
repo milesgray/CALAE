@@ -1741,7 +1741,7 @@ class UNetStyle(nn.Module):
         self.projector = FeatureProjectionNetwork(**f_params)
         self.verbose = verbose
 
-    def forward(self, x, w=None, scale, alpha, return_norm=False, mode='enc-dec'):
+    def forward(self, x, w, scale, alpha, return_norm=False, mode='enc-dec'):
         if mode == 'enc-dec':
             if return_norm:
                 E_n, w, E_x = self.encoder.forward(x, scale, alpha, return_norm=True, return_blocks=True)
