@@ -1,7 +1,7 @@
- """
- U-Net Generator from Contrastive GAN
- https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py
- """
+"""
+U-Net Generator from Contrastive GAN
+https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
