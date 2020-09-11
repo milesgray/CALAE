@@ -1523,6 +1523,7 @@ class Encoder(nn.Module):
         self.code = code  
         encoder_blocks = []
         from_rgb_blocks = []
+        attn_blocks = []
         if learn_blend:
             self.blend_gains = []
         self.max_scale = 0
@@ -1534,6 +1535,7 @@ class Encoder(nn.Module):
                                                blur_downsample=blur_downsample, 
                                                learn_blur=learn_blur))
             from_rgb_blocks.append(FromRGB(3, max_fm//settings["rgb"]))
+            attn_blocks.append(SelfAttention(max_fm//settings["enc"][1], 'leaky'))
             if learn_blend:
                 self.blend_gains.append(nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)), requires_grad=True))
             self.max_scale = max(scale, self.max_scale)
@@ -1541,25 +1543,36 @@ class Encoder(nn.Module):
 
         self.encoder = nn.ModuleList(encoder_blocks)        
         self.fromRGB =  nn.ModuleList(from_rgb_blocks)
+        self.attn = nn.ModuleList(attn_blocks)
         
-    def forward(self, x, alpha=1., return_norm=False):
+    def forward(self, x, alpha=1., return_norm=False, return_blocks=False):
+        if return_blocks:
+            blocks = []
         if return_norm:
             # return norm is not 0, it should be set to the layer index (negative)
             # of the layer to use for the return value
             norm_layer_num = return_norm
             return_norm = True
+            norms = []
         n_blocks = int(log2(x.shape[-1]) - 1) # Compute the number of required blocks
 
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            _, w1, w2, n = self.encoder[-1](self.fromRGB[-1](x, downsample=False))
-            if return_norm: return n
+            x, w1, w2, n = self.encoder[-1](self.fromRGB[-1](x, downsample=False))
+            if return_norm and not return_blocks and -1 in norm_layer_num: 
+                return n
             if self.learn_blend:
                 ratio = F.softmax(self.blend_gains[-1], dim=0)
                 w = (w1 * ratio[0] + w2 * ratio[1])
             else:
                 w = (w1 + w2)  
-            return w
+            if return_blocks:
+                if return_norm:
+                    return n, [(x, w, n)]
+                else:
+                    return [(x, w, n)]
+            else:
+                return w
             
         # Store w
         w = torch.zeros(x.shape[0], self.code).to(x.device)
@@ -1579,17 +1592,30 @@ class Encoder(nn.Module):
         else:
             w += (w1 + w2) 
 
+        if return_blocks:
+            blocks.append((x, w, n))
+
         for index in range(-n_blocks + 1, 0):
             x, w1, w2, n = self.encoder[index](x)
-            if return_norm and index == norm_layer_num:
-                return n
+            if return_norm and index in norm_layer_num:
+                norms.append(n)
             if self.learn_blend:
                 ratio = F.softmax(self.blend_gains[index], dim=0)
                 w += (w1 * ratio[0] + w2 * ratio[1])
             else:
-                w += (w1 + w2)            
-
-        return w
+                w += (w1 + w2)
+            
+            if return_blocks:
+                blocks.append((x, w, n))    
+                
+        if return_norm and return_blocks:
+            return norms, w, blocks
+        elif return_norm:
+            return norms
+        elif return_blocks:
+            return w, blocks
+        else:
+            return w
 
 ####################################################################################################################
 ############ G E N E R A T O R ###########--------------------------------------------------------------------------
@@ -1715,10 +1741,66 @@ class UNetStyle(nn.Module):
         self.projector = FeatureProjectionNetwork(**f_params)
         self.verbose = verbose
 
-    def forward(self, x, w=None, scale, alpha, mode='enc-dec'):
+    def forward(self, x, w=None, scale, alpha, return_norm=False, mode='enc-dec'):
         if mode == 'enc-dec':
+            if return_norm:
+                E_n, w, E_x = self.encoder.forward(x, scale, alpha, return_norm=True, return_blocks=True)
+                return E_n, self.generator.forward(w, scale, E_x, alpha, return_norm=True)
+            else:
+                w, E_x = self.encoder.forward(x, scale, alpha, return_norm=False, return_blocks=True)
+                return self.generator.forward(w, scale, E_x, alpha, return_norm=False)
             
+    def generate(self, w, scale, e_x, alpha=1, return_norm=False):
+        if return_norm:
+            # return norm is not 0, it should be set to the layer index (positive)
+            # of the layer to use for the return value
+            norm_layer_nums = return_norm
+            return_norm = True
+            norms = []
+        n_blocks = int(log2(scale) - 1) # Compute the number of required blocks        
+                
+        # Take learnable constant as an input
+        inp = self.generator.generator[0].constant
+        
+        # In case of the first block, there is no blending, just return RGB image
+        if n_blocks == 1:
+            norm = self.generator.generator[0](inp, w[:, 0])             
+            if return_norm: 
+                return [norm]
+            else: 
+                E_out = E_x[-1]
+                norm = torch.cat(E_out, norm, dim=1)
+                return self.generator.toRGB[0](norm, upsample=False)
 
+        # If scale >= 8
+        activations_2x = []
+        for index in range(n_blocks):
+            inp = self.generator.generator[index](inp, w[:, index])
+            
+            # if returning norm, cut out early
+            if (return_norm and index in norm_layer_nums):
+                norms.append(inp)
+
+            E_out = E_x[-(index+1)]
+            inp = torch.cat(E_out, inp, dim=1)
+
+            # Save last 2 scales
+            if index in [n_blocks-2, n_blocks-1]:
+                activations_2x.append(inp)
+        
+        inp = self.generator.toRGB[n_blocks-1](activations_2x[1], upsample=False)
+        
+        if alpha < 1: # In case if blending is applied            
+            inp = (1 - alpha) * self.generator.toRGB[n_blocks-2](activations_2x[0], upsample=True) + alpha * inp
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        else:
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        if return_norm:
+            return norms
+        else:
+            return inp
 # ------------------------------------------------------------------------------------------------------------------
 # Resnet 2D RGB Image Generator Network with Contrastive Feature outputs, from Contrastive Unpaired Style Transfer
 # Used with NCELoss
