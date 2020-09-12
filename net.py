@@ -1439,7 +1439,9 @@ class FeatureProjectionNetwork(nn.Module):
         if self.norm:
             layer.append(Factory.get_normalization(Factory.make_norm_1d(self.norm)))
         if self.act:
-            layer.append(Factory.get_activation(self.act))        
+            layer.append(Factory.get_activation(self.act)) 
+        if self.act == "selu":
+            layer.append(nn.AlphaDropout(0.05))       
             
         return layer
     
