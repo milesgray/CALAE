@@ -61,16 +61,19 @@ class Correlation(nn.Module):
         loss = torch.mean((delta[:-1] * delta[1:]).sum(1))
         return loss
 
+class FSPWrapperLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = FSP()        
+
+    def forward(self, x, y):
+        return torch.stack(self.loss(x, y)).mean()
+        
 class FSP(nn.Module):
     """A Gift from Knowledge Distillation:
     Fast Optimization, Network Minimization and Transfer Learning"""
-    def __init__(self, s_shapes, t_shapes):
-        super(FSP, self).__init__()
-        assert len(s_shapes) == len(t_shapes), 'unequal length of feat list'
-        s_c = [s[1] for s in s_shapes]
-        t_c = [t[1] for t in t_shapes]
-        if np.any(np.asarray(s_c) != np.asarray(t_c)):
-            raise ValueError('num of channels not equal (error in FSP)')
+    def __init__(self):
+        super().__init__()        
 
     def forward(self, g_s, g_t):
         s_fsp = self.compute_fsp(g_s)
@@ -101,7 +104,7 @@ class FSP(nn.Module):
 
             fsp = (bot * top).mean(-1)
             fsp_list.append(fsp)
-        return fsp_list        
+        return fsp_list
 
 class FactorTransfer(nn.Module):
     """Paraphrasing Complex Network: Network Compression via Factor Transfer, NeurIPS 2018"""
@@ -219,7 +222,15 @@ class KDSVD(nn.Module):
         mask = torch.where(torch.eq(max_abs_cosine, torch.abs(cosine)),
                            torch.sign(cosine), torch.zeros_like(cosine))
         a = torch.matmul(a, mask)
-        return a, b        
+        return a, b     
+
+class NSTWrapperLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.loss = NSTLoss()        
+
+    def forward(self, x, y):
+        return torch.tensor(self.loss(x, y)).mean()
 
 class NSTLoss(nn.Module):
     """like what you like: knowledge distill via neuron selectivity transfer"""
