@@ -712,10 +712,14 @@ class IntermediateNoise(nn.Module):
     def __init__(self, inp_c):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(1, inp_c, 1, 1), requires_grad=True)
+        self.noise = None
     
-    def forward(self, x):
+    def forward(self, x, noise=None):
         if self.training:
-            noise = torch.randn(x.shape[0], 1, x.shape[-2], x.shape[-1]).to(x.device)
+            if noise is None and self.noise is None:
+                noise = torch.randn(x.shape[0], 1, x.shape[-2], x.shape[-1]).to(x.device)
+            elif noise is None:
+                noise = self.noise
             return x + (noise * self.weight)
         else:
             return x
@@ -799,7 +803,53 @@ class BlurSimple(nn.Module):
 
     def forward(self, x):
         return F.conv2d(x, weight=self.weight, groups=self.groups, padding=1)
+# ------------------------------------------------------------------------------------------------------------------
+# Learnable Affine Gaussian-ish Transformation
+# Used for fine grain corrective projection after a heavier transform
+# ------------------------------------------------------------------------------------------------------------------
+class LearnableGaussianTransform0d(nn.Module):        
+    def __init__(self, scale=512):
+        """ scale matches input and does not change shape, only values
+        """
+        super().__init__()
 
+        self.weight = nn.Parameter(torch.ones(scale), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(scale), requires_grad=True)
+
+    def forward(self, x):
+        z = self.weight * x
+        x = self.bias.exp() * x
+        z = z + (x - 1)
+        return z
+class LearnableGaussianTransform1d(nn.Module):        
+    def __init__(self, scale=512):
+        """ scale matches input and does not change shape, only values
+        """
+        super().__init__()
+
+        if isinstance(scale, int):
+            scale = (scale, scale)
+
+        self.A = lreq.Linear(scale[0], scale[1], bias=True)
+
+    def forward(self, x):
+        z = self.A.linear.weight * x
+        x = self.A.linear.bias.exp() * x
+      
+        z = z + (x - 1)
+        return z
+class LearnableGaussianTransform2d(nn.Module):
+    def __init__(self, scale=(4,4)):
+        super().__init__()
+        if isinstance(scale, int):
+            scale = (scale, scale)
+        self.weight = nn.Parameter(torch.zeros(1, scale[0], scale[1], 1), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(1, scale[0], scale[1], 1), requires_grad=True)
+
+    def forward(self, x):
+        x = self.weight * x
+        z = self.bias.exp() * x       
+        return x + (z - 1)
 # ------------------------------------------------------------------------------------------------------------------
 # Learnable Affine Gaussian-ish Transformation
 # Used for fine grain corrective projection after a heavier transform
@@ -821,7 +871,6 @@ class LearnableAffineTransform0d(nn.Module):
         x = self.bias.exp() * x
         z = z + x
         return z
-
 class LearnableAffineTransform1d(nn.Module):        
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
@@ -841,7 +890,6 @@ class LearnableAffineTransform1d(nn.Module):
       
         z = z + x
         return z
-
 class LearnableAffineTransform2d(nn.Module):
     def __init__(self, scale=(4,4)):
         super().__init__()
@@ -1244,21 +1292,19 @@ class GeneratorBlock(nn.Module):
                 self.blur_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
         if self.learn_residual:
             self.residual_gain = nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)))
-            self.res_upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
-            self.res_blur = Blur(inp_c)
-            if self.learn_blur:
-                self.res_blur_affine = set_scale(LearnableAffineTransform2d(scale=inp_c))    
+            self.res_upsample = lreq.ConvTranspose2d(inp_c, oup_c, kernel_size=4, stride=2, padding=0) # nn.UpsamplingBilinear2d(scale_factor=2)
+            self.res_ups_affine = set_scale(LearnableGaussianTransform0d(scale=oup_c))    
 
         # Learnable noise coefficients
         self.B1 = set_scale(IntermediateNoise(inp_c))
         self.B2 = set_scale(IntermediateNoise(oup_c))
         # Learnable affine transform
         if self.learn_noise:
-            self.B1_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
-            self.B2_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
+            self.B1_affine = LearnableGaussianTransform1d(scale=(inp_c, scale))
+            self.B2_affine = LearnableGaussianTransform1d(scale=(inp_c, scale))
         if self.learn_style:
-            self.w1_affine = LearnableAffineTransform0d(scale=code)
-            self.w2_affine = LearnableAffineTransform0d(scale=code)
+            self.w1_affine = LearnableGaussianTransform0d(scale=code)
+            self.w2_affine = LearnableGaussianTransform0d(scale=code)
         
         
         # Each Ada PN contains learnable parameters A
@@ -1273,9 +1319,9 @@ class GeneratorBlock(nn.Module):
         if self.initial:
             self.constant = nn.Parameter(torch.randn(1, inp_c, 4, 4), requires_grad=True)
         else:
-            self.conv1 = ScaledConv2d(inp_c, inp_c, kernel_size=3, padding=1)
+            self.conv1 = lreq.Conv2d(inp_c, inp_c, kernel_size=3, padding=1)
             
-        self.conv2 = ScaledConv2d(inp_c, oup_c, kernel_size=3, padding=1)
+        self.conv2 = lreq.Conv2d(inp_c, oup_c, kernel_size=3, padding=1)
         
         self.upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
         self.blur = Blur(inp_c)
@@ -1283,10 +1329,11 @@ class GeneratorBlock(nn.Module):
         if act:
             self.activation = Factory.get_activation(act)        
         
-    def forward(self, x, w):
+    def forward(self, x, w, e=None):
         """
-        x - (N x C x H x W)
+        x - (N x C x H x W) -> N x C x H*2 x W*2
         w - (N x C), where A: (N x C) -> (N x (C x 2))
+        e - (N x C x H x W)
         """
         i = x
         if self.initial:
@@ -1320,10 +1367,7 @@ class GeneratorBlock(nn.Module):
 
         if self.learn_residual and not self.initial:
             i = self.res_upsample(i)
-            if self.blur_upsample:
-                i = self.res_blur(i)
-            if self.learn_blur:
-                i = self.res_blur_affine(i)
+            i = self.res_ups_affine(i)
             ratio = F.softmax(self.residual_gain, dim=0)
             x = x * ratio[0] + i * ratio[1]
 

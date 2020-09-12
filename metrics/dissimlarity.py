@@ -133,3 +133,22 @@ def mahalanobis_loss_decomp(X, mu_tilde, Cov_tilde):
     cov = torch.matmul(Cov_tilde, torch.transpose(Cov_tilde, [0, 2, 1]))
     diff = torch.unsqueeze(X-mu_tilde, axis=1)
     return torch.squeeze(torch.matmul(torch.matmul(diff, cov), torch.transpose(diff, perm = [0, 2, 1])))
+
+def geocross_loss(x):
+     """
+    Computes the geodesic distance on sphere to sum pairwise distances
+    Arguments:
+        X: array-like, shape=(batch_size, n_features)
+            Input batch matrix.        
+    Returns:
+        loss: array-like, shape=(batch_size, )
+            Computed loss for each sample.
+    """
+    if X.shape[1] == 1: return 0
+    X = x.view(-1, 1, x.shape[1], x.shape[2])
+    Y = x.view(-1, x.shape[1], 1, x.shape[2])
+    A = ((X-Y).pow(2).sum(-1)+1e-9).sqrt()
+    B = ((X+Y).pow(2).sum(-1)+1e-9).sqrt()
+    D = 2*torch.atan2(A, B)
+    D = ((D.pow(2)*512).mean((1, 2))/8.).sum()
+    return D
