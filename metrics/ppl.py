@@ -10,20 +10,14 @@
 """Perceptual Path Length (PPL)."""
 
 import numpy as np
-import dnnlib.tflib
+
 import pickle
-from net import *
-from checkpointer import Checkpointer
-from model import Model
-from launcher import run
+
 from dlutils.pytorch import count_parameters
-from defaults import get_cfg_defaults
 from dlutils import download
 import tqdm
 
 from matplotlib import pyplot as plt
-
-dnnlib.tflib.init_tf()
 
 download.from_google_drive('1CIDc9i070KQhHlkr4yIwoJC8xqrwjE0_', directory="metrics")
 

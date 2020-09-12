@@ -1,22 +1,12 @@
-import dnnlib.tflib
 import pickle
-from net import *
-from model import Model
-from launcher import run
-from dataloader import *
-
-from checkpointer import Checkpointer
 
 from dlutils.pytorch import count_parameters
 from dlutils import download
-from defaults import get_cfg_defaults
 from tqdm import tqdm
 
 from PIL import Image
 from matplotlib import pyplot as plt
 import utils
-
-dnnlib.tflib.init_tf()
 
 download.from_google_drive('1CIDc9i070KQhHlkr4yIwoJC8xqrwjE0_', directory="metrics")
 
