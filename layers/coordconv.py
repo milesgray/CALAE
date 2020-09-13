@@ -132,15 +132,16 @@ class ExplicitAddCoords(nn.Module):
         super().__init__()
         self.with_r = with_r
 
-    def forward(self, input_tensor, coords):
+    def forward(self, input_tensor, bbox):
         """
         Args:
             input_tensor: shape(batch, channel, x_dim, y_dim)
+            bbox: shape(4) - x1, y1, x2, y2
         """
         batch_size, _, x_dim, y_dim = input_tensor.size()
 
-        xx_channel = torch.arange(x_dim).repeat(1, y_dim, 1)
-        yy_channel = torch.arange(y_dim).repeat(1, x_dim, 1).transpose(1, 2)
+        xx_channel = torch.arange(bbox[0], bbox[2]).repeat(1, y_dim, 1)
+        yy_channel = torch.arange(bbox[1], bbox[3]).repeat(1, x_dim, 1).transpose(1, 2)
 
         xx_channel = xx_channel.float() / (x_dim - 1)
         yy_channel = yy_channel.float() / (y_dim - 1)
@@ -165,15 +166,15 @@ class ExplicitAddCoords(nn.Module):
 
 class ExplicitCoordConv(nn.Module):
 
-    def __init__(self, in_channels, out_channels, box_coords, with_r=False, with_coords=None, **kwargs):
+    def __init__(self, in_channels, out_channels, box_coords, with_r=False, **kwargs):
         super().__init__()
-        self.addcoords = AddCoords(with_r=with_r, with_coords=with_coords)
+        self.addcoords = ExplicitAddCoords(with_r=with_r)
         in_size = in_channels+2
         if with_r:
             in_size += 1
         self.conv = nn.Conv2d(in_size, out_channels, **kwargs)
 
-    def forward(self, x):
-        ret = self.addcoords(x)
+    def forward(self, x, coords):
+        ret = self.addcoords(x, coords)
         ret = self.conv(ret)
         return ret        
