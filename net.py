@@ -1134,7 +1134,7 @@ class PatchSampleFeatureProjection(nn.Module):
             32: 22
         }
         if self.use_percept:
-            self.percept = PerceptualLoss(ilayer=percep_layer_lookup[scale])
+            self.percept = PerceptualLoss(ilayer=percep_layer_lookup[scale if scale < 32 else 32])
 
     def create_mlp(self, feats):
         for mlp_id, feat in enumerate(feats):
