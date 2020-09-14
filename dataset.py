@@ -1,4 +1,5 @@
 import os
+import logging
 import pathlib
 import random
 import numpy as np
@@ -13,6 +14,9 @@ try:
 except ImportError:
     accimage = None
 
+from os.path import splitext
+from os import listdir
+from glob import glob
 
 def _is_pil_image(img):
     if accimage is not None:
@@ -20,15 +24,73 @@ def _is_pil_image(img):
     else:
         return isinstance(img, Image.Image)
 
-
 def _is_numpy(img):
     return isinstance(img, np.ndarray)
-
 
 def _is_numpy_image(img):
     return img.ndim in {2, 3}
 
 
+class BasicDataset(Dataset):
+    def __init__(self, imgs_dir, masks_dir, scale=1):
+        self.imgs_dir = imgs_dir
+        self.imgs_path = pathlib.Path(imgs_dir)
+        self.masks_dir = masks_dir
+        self.masks_path = pathlib.Path(masks_path)
+        self.scale = scale
+        assert 0 < scale <= 1, 'Scale must be between 0 and 1'
+
+        self.ids = [p.stem for p in self.imgs_path.iterdir()
+                    if not p.startswith('.')]
+        logging.info(f'Creating dataset with {len(self.ids)} examples')
+
+    def __len__(self):
+        return len(self.ids)
+
+    @classmethod
+    def preprocess(cls, pil_img, scale):
+        w, h = pil_img.size
+        newW, newH = int(scale * w), int(scale * h)
+        assert newW > 0 and newH > 0, 'Scale is too small'
+        pil_img = pil_img.resize((newW, newH))
+
+        img_nd = np.array(pil_img)
+
+        if len(img_nd.shape) == 2:
+            img_nd = np.expand_dims(img_nd, axis=2)
+
+        # HWC to CHW
+        img_trans = img_nd.transpose((2, 0, 1))
+        if img_trans.max() > 1:
+            img_trans = img_trans / 255
+
+        return img_trans
+
+    def __getitem__(self, i):
+        idx = self.ids[i]
+        mask_file = glob(self.masks_dir + idx + '*')
+        img_file = glob(self.imgs_dir + idx + '*')
+
+        assert len(mask_file) == 1, \
+            f'Either no mask or multiple masks found for the ID {idx}: {mask_file}'
+        assert len(img_file) == 1, \
+            f'Either no image or multiple images found for the ID {idx}: {img_file}'
+        mask = Image.open(mask_file[0])
+        img = Image.open(img_file[0])
+
+        assert img.size == mask.size, \
+            f'Image and mask {idx} should be the same size, but are {img.size} and {mask.size}'
+
+        img = self.preprocess(img, self.scale)
+        mask = self.preprocess(mask, self.scale)
+
+        return {'image': torch.from_numpy(img), 'mask': torch.from_numpy(mask)}
+
+####################################################################################################################
+########### C E L E B A #############-------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
+# CelebA face image dataset, only returns images and not metadata
+# ------------------------------------------------------------------------------------------------------------------
 class CelebA(Dataset):
     def __init__(self, path='/root/data/CelebA/img_align_celeba/', part='train'):
         if part=='train':
@@ -50,8 +112,11 @@ def make_celeba_dataloader(dataset, batch_size, image_size=4):
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)])
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=4, drop_last=True)
 
-
- 
+####################################################################################################################
+########### F R A C T A L #############-------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
+# Custom Fractal Images dataset with high resolution images.  Must apply crop to use.
+# ------------------------------------------------------------------------------------------------------------------
 class Fractal(Dataset):
     def __init__(self, path='/content/all/', part='train'):
         self.all_data = all_paths = [str(p.absolute()) for p in pathlib.Path(path).glob("*")]
@@ -66,7 +131,34 @@ class Fractal(Dataset):
     
     def __getitem__(self, idx):
         return self.transform(Image.open(self.data[idx]).convert('RGB'))
+# ------------------------------------------------------------------------------------------------------------------
+# Prepares a set of transformations that crops a certain scale square area randomly from each images
+# in a batch, effectively making a much larger dataset than individual image count suggests.
+# ------------------------------------------------------------------------------------------------------------------
+def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
+    transform_list = []
+    if isinstance(crop_mode, str):
+        if crop_mode == 'random':
+            transform_list.append(transforms.RandomCrop(crop_size, pad_if_needed=True, padding_mode='symmetric'))        
+        elif crop_mode == 'center':
+            transform_list.append(transforms.CenterCrop(crop_size))                
+    transform_list.append(transforms.Resize((image_size, image_size)))            
+    transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
+    transform_list.append(transforms.RandomVerticalFlip(p=0.5))
+    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
+    transform_list.append(transforms.RandomGrayscale(p=0.1)) 
+    transform_list.append(transforms.ToTensor())
+    transform_list.append(transforms.Normalize(mean, std, inplace=True))
+    
+    dataset.transform = transforms.Compose(transform_list)
+    return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
 
+# ------------------------------------------------------------------------------------------------------------------
+# Custom Fractal Images dataset with high resolution images.  Must apply crop and also return the coordinates of
+# of the crop in the form of the upper left and lower right points (bounding box - [x1,y1,x2,y2]). Supports the concept
+# of multiple crops from each image so that Contrastive Learning can be used with each crop from the same image has a label
+# applied in this class based on the index
+# ------------------------------------------------------------------------------------------------------------------
 class FractalLabel(Dataset):
     def __init__(self, path='/content/all/', part='train'):
         self.all_data = all_paths = [str(p.absolute()) for p in pathlib.Path(path).glob("*")]
@@ -84,6 +176,26 @@ class FractalLabel(Dataset):
         label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
         return (result, label, coords)
 
+# ------------------------------------------------------------------------------------------------------------------
+# Prepares a set of transformations that makes many crops of a certain scale square area randomly from each image
+# in a batch, effectively making a much larger dataset than individual image count suggests. Also returns the coordinates
+# of each crop. Results in a 4-d tensor [N, C, H, W] with N being number of crops
+# ------------------------------------------------------------------------------------------------------------------
+def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode=5, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
+    transform_list = []             
+    transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
+    transform_list.append(transforms.RandomVerticalFlip(p=0.5))
+    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
+    transform_list.append(transforms.RandomGrayscale(p=0.1))     
+    transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
+    transform_list.append(BuildOutput(mean, std))
+    
+    
+    dataset.transform = transforms.Compose(transform_list)
+    return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
+
+
+
 def _get_image_size(img):
     if _is_pil_image(img):
         return img.size
@@ -91,17 +203,6 @@ def _get_image_size(img):
         return img.shape[-2:][::-1]
     else:
         raise TypeError("Unexpected type {}".format(type(img)))
-
-_contrastive_label_counter = 0
-
-class PrepareContrastiveLabel:
-    def __call__(self, x):
-        ncrops, c, h, w = x.shape
-        global _contrastive_label_counter
-        _contrastive_label_counter += 1
-        labels = torch.stack([ToTensor()(_contrastive_label_counter) for _ in range(ncrops)])
-        
-        return 
 
 class MultiCrop:
     def __init__(self, crop_size, resize_size, count=5, crop_pad=0.1):
@@ -190,34 +291,3 @@ class BuildOutput:
         label = torch.Tensor(y)
 
         return data, label
-
-def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode=5, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
-    transform_list = []             
-    transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
-    transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    transform_list.append(transforms.RandomGrayscale(p=0.1))     
-    transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
-    transform_list.append(BuildOutput(mean, std))
-    
-    
-    dataset.transform = transforms.Compose(transform_list)
-    return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
-
-def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
-    transform_list = []
-    if isinstance(crop_mode, str):
-        if crop_mode == 'random':
-            transform_list.append(transforms.RandomCrop(crop_size, pad_if_needed=True, padding_mode='symmetric'))        
-        elif crop_mode == 'center':
-            transform_list.append(transforms.CenterCrop(crop_size))                
-    transform_list.append(transforms.Resize((image_size, image_size)))            
-    transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
-    transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    transform_list.append(transforms.RandomGrayscale(p=0.1)) 
-    transform_list.append(transforms.ToTensor())
-    transform_list.append(transforms.Normalize(mean, std, inplace=True))
-    
-    dataset.transform = transforms.Compose(transform_list)
-    return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
