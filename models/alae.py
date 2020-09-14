@@ -14,208 +14,8 @@ from math import log2, ceil
 from torch.autograd import Function
 from torch.nn import functional as F
 
-from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
-from downsample import Downsample
-from losses import logcosh, xtanh, xsigmoid
-
-####################################################################################################################
-################################################## Level 0 blocks ##################################################
-####################################################################################################################
-
-####################################################################################################################
-############### L O S S ##################--------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------------------------------------
-class LogCoshLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):
-        return logcosh(y_t, y_prime_t)
-
-class XTanhLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):        
-        return xtanh(y_t, y_prime_t)
-
-class XSigmoidLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_t, y_prime_t):
-        return xsigmoid(y_t, y_prime_t)
-
-####################################################################################################################
-###### N O R M A L I Z A T I O N #########--------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------------------------------------
-# Pixelwise feature vector normalization.
-# reference: https://github.com/tkarras/progressive_growing_of_gans/blob/master/networks.py#L120
-# ------------------------------------------------------------------------------------------------------------------
-class PixelwiseNorm(nn.Module):
-    def __init__(self):
-        super(PixelwiseNorm, self).__init__()
-
-    def forward(self, x, alpha=1e-8):
-        """
-        forward pass of the module
-        :param x: input activations volume
-        :param alpha: small number for numerical stability
-        :return: y => pixel normalized activations
-        """
-        y = x.pow(2.).mean(dim=1, keepdim=True).add(alpha).sqrt()  # [N1HW]
-        y = x / y  # normalize the input x volume
-        return y
-
-# ------------------------------------------------------------------------------------------------------------------
-# Activation Norm - Normalized
-# ------------------------------------------------------------------------------------------------------------------
-class Actnorm(nn.Module):
-    """ Actnorm layer; cf Glow section 3.1 """
-    def __init__(self, param_dim=(1,3,1,1)):
-        super().__init__()
-        self.scale = nn.Parameter(torch.ones(param_dim))
-        self.bias = nn.Parameter(torch.zeros(param_dim))
-        self.register_buffer('initialized', torch.tensor(0).byte())
-
-    def forward(self, x):
-        if not self.initialized:
-            # per channel mean and variance where x.shape = (B, C, H, W)
-            self.bias.squeeze().data.copy_(x.transpose(0,1).flatten(1).mean(1)).view_as(self.scale)
-            self.scale.squeeze().data.copy_(x.transpose(0,1).flatten(1).std(1, False) + 1e-6).view_as(self.bias)
-            self.initialized += 1
-
-        z = (x - self.bias) / self.scale
-        logdet = - self.scale.abs().log().sum() * x.shape[2] * x.shape[3]
-        return z, logdet
-
-    def inverse(self, z):
-        return z * self.scale + self.bias, self.scale.abs().log().sum() * z.shape[2] * z.shape[3]
-        
-# ------------------------------------------------------------------------------------------------------------------
-# Spectral Norm - Normalized
-# ------------------------------------------------------------------------------------------------------------------
-class SpectralNorm(nn.Module):
-    """ Spectral Normalization - Normalized Flow layer; cf Glow section 3.1 """
-    def __init__(self, param_dim=(1,3,1,1)):
-        super().__init__()
-        self.norm = nn.utils.spectral_norm()
-        self.denorm = nn.utils.remove_spectral_norm()
-
-    def forward(self, x):
-        z = self.norm(x)
-        return z
-
-    def inverse(self, z):
-        x = self.denorm(z)
-        return x
-
-####################################################################################################################
-###### T R A N S F O R M A T I O N #######--------------------------------------------------------------------------
-# ------------------------------------------------------------------------------------------------------------------
-# Model Layer Weights as Learnable Gaussian
-# per ReanNVP sec 3.6 / fig 4b -- at each step half the variables are directly modeled as Gaussians.
-# ------------------------------------------------------------------------------------------------------------------
-class Gaussianize(nn.Module):
-    """ Gaussianization per ReanNVP sec 3.6 / fig 4b -- at each step half the variables are directly modeled as Gaussians.
-    Model as Gaussians:
-        x2 = z2 * exp(logs) + mu, so x2 ~ N(mu, exp(logs)^2) where mu, logs = f(x1)
-    then to recover the random numbers z driving the model:
-        z2 = (x2 - mu) * exp(-logs)
-    Here f(x1) is a conv layer initialized to identity.
-    """
-    def __init__(self, n_channels):
-        super().__init__()
-        self.net = nn.Conv2d(n_channels, 2*n_channels, kernel_size=3, padding=1)  # computes the parameters of Gaussian
-        self.log_scale_factor = nn.Parameter(torch.zeros(2*n_channels,1,1))       # learned scale (cf RealNVP sec 4.1 / Glow official code
-        # initialize to identity
-        self.net.weight.data.zero_()
-        self.net.bias.data.zero_()
-
-    def forward(self, x1, x2):
-        h = self.net(x1) * self.log_scale_factor.exp()  # use x1 to model x2 as Gaussians; learnable scale
-        m, logs = h[:,0::2,:,:], h[:,1::2,:,:]          # split along channel dims
-        z2 = (x2 - m) * torch.exp(-logs)                # center and scale; log prob is computed at the model forward
-        logdet = - logs.sum([1,2,3])
-        return z2, logdet
-
-    def inverse(self, x1, z2):
-        h = self.net(x1) * self.log_scale_factor.exp()
-        m, logs = h[:,0::2,:,:], h[:,1::2,:,:]
-        x2 = m + z2 * torch.exp(logs)
-        logdet = logs.sum([1,2,3])
-        return x2, logdet
-
-# ------------------------------------------------------------------------------------------------------------------
-# 
-# ------------------------------------------------------------------------------------------------------------------
-class PlanarTransform(nn.Module):
-    def __init__(self, init_sigma=0.01):
-        super().__init__()
-        self.u = nn.Parameter(torch.randn(1, 2).normal_(0, init_sigma))
-        self.w = nn.Parameter(torch.randn(1, 2).normal_(0, init_sigma))
-        self.b = nn.Parameter(torch.randn(1).fill_(0))
-
-    def forward(self, x, normalize_u=True):
-        # allow for a single forward pass over all the transforms in the flows with a Sequential container
-        if isinstance(x, tuple):
-            z, sum_log_abs_det_jacobians = x
-        else:
-            z, sum_log_abs_det_jacobians = x, 0
-
-        # normalize u s.t. w @ u >= -1; sufficient condition for invertibility
-        u_hat = self.u
-        if normalize_u:
-            wtu = (self.w @ self.u.t()).squeeze()
-            m_wtu = - 1 + torch.log1p(wtu.exp())
-            u_hat = self.u + (m_wtu - wtu) * self.w / (self.w @ self.w.t())
-
-        # compute transform
-        f_z = z + u_hat * torch.tanh(z @ self.w.t() + self.b)
-        # compute log_abs_det_jacobian
-        psi = (1 - torch.tanh(z @ self.w.t() + self.b)**2) @ self.w
-        det = 1 + psi @ u_hat.t()
-        log_abs_det_jacobian = torch.log(torch.abs(det) + 1e-6).squeeze()
-        sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + log_abs_det_jacobian
-
-        return f_z, sum_log_abs_det_jacobians
-
-# ------------------------------------------------------------------------------------------------------------------
-# High Pass Filter Transformation
-# ------------------------------------------------------------------------------------------------------------------
-class HighPass(nn.Module):
-    def __init__(self, w_hpf, device):
-        super(HighPass, self).__init__()
-        self.filter = torch.tensor([[-1, -1, -1],
-                                    [-1, 8., -1],
-                                    [-1, -1, -1]]).to(device) / w_hpf
-
-    def forward(self, x):
-        filter = self.filter.unsqueeze(0).unsqueeze(1).repeat(x.size(1), 1, 1, 1)
-        return F.conv2d(x, filter, padding=1, groups=x.size(1))
-
-# ------------------------------------------------------------------------------------------------------------------
-# Relative X,Y Coordinate Values Channel
-# adds coords for each filter location, resulting in size [B,H,W,C+1] - should be the first layer
-# ------------------------------------------------------------------------------------------------------------------
-class CoordConvTh(nn.Module):
-    """CoordConv layer as in the paper StarGANv2."""
-    def __init__(self, height, width, with_r, with_boundary,
-                 in_channels, first_one=False, *args, **kwargs):
-        super(CoordConvTh, self).__init__()
-        self.addcoords = AddCoordsTh(height, width, with_r, with_boundary)
-        in_channels += 2
-        if with_r:
-            in_channels += 1
-        if with_boundary and not first_one:
-            in_channels += 2
-        self.conv = nn.Conv2d(in_channels=in_channels, *args, **kwargs)
-
-    def forward(self, input_tensor, heatmap=None):
-        ret = self.addcoords(input_tensor, heatmap)
-        last_channel = ret[:, -2:, :, :]
-        ret = self.conv(ret)
-        return ret, last_channel
+from ..layers.scaled_layers import set_scale
+import ..layers.lreq as lreq
 
 ####################################################################################################################
 ################################################## Level 1 blocks ##################################################
@@ -232,7 +32,7 @@ class AdaIN(nn.Module):
         super().__init__()
         
         self.insance_norm = nn.InstanceNorm2d(n_channels, affine=False, eps=1e-8)
-        self.A = ScaledLinear(code, n_channels * 2)
+        self.A = lreq.Linear(code, n_channels * 2)
         
         # StyleGAN
         # self.A.linear.bias.data = torch.cat([torch.ones(n_channels), torch.zeros(n_channels)])
@@ -362,7 +162,7 @@ class AffineTransform(nn.Module):
 class FromRGB(nn.Module):
     def __init__(self, inp_c, oup_c):
         super(FromRGB, self).__init__()
-        self.from_rgb = nn.Sequential(ScaledConv2d(inp_c, oup_c, 1, 1, 0), nn.LeakyReLU(0.2))
+        self.from_rgb = nn.Sequential(lreq.Conv2d(inp_c, oup_c, 1, 1, 0), nn.LeakyReLU(0.2))
         self.downsample = nn.AvgPool2d(2)
         
     def forward(self, x, downsample=False):
@@ -377,7 +177,7 @@ class FromRGB(nn.Module):
 class ToRGB(nn.Module):
     def __init__(self, inp_c, oup_c):
         super(ToRGB, self).__init__()
-        self.to_rgb = ScaledConv2d(inp_c, oup_c, 1, 1, 0)
+        self.to_rgb = lreq.Conv2d(inp_c, oup_c, 1, 1, 0)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
             
     def forward(self, x, upsample=False):
@@ -406,15 +206,15 @@ class EncoderBlock(nn.Module):
         self.in1 = nn.InstanceNorm2d(inp_c, affine=False)
         self.in2 = nn.InstanceNorm2d(oup_c, affine=False)
         
-        self.conv1 = ScaledConv2d(inp_c, inp_c, kernel_size=3, stride=1, padding=1)
-        self.style_mapping1 = ScaledLinear(2 * inp_c, code)
+        self.conv1 = lreq.Conv2d(inp_c, inp_c, kernel_size=3, stride=1, padding=1)
+        self.style_mapping1 = lreq.Linear(2 * inp_c, code)
         
         if final:
-            self.fc = ScaledLinear(inp_c * 4 * 4, oup_c)
-            self.style_mapping2 = ScaledLinear(oup_c, code)
+            self.fc = lreq.Linear(inp_c * 4 * 4, oup_c)
+            self.style_mapping2 = lreq.Linear(oup_c, code)
         else:
-            self.conv2 = ScaledConv2d(inp_c, oup_c, kernel_size=3, stride=1, padding=1)    
-            self.style_mapping2 = ScaledLinear(2 * oup_c, code)
+            self.conv2 = lreq.Conv2d(inp_c, oup_c, kernel_size=3, stride=1, padding=1)    
+            self.style_mapping2 = lreq.Linear(2 * oup_c, code)
             
         self.act = nn.LeakyReLU(0.2)
         self.downsample = nn.AvgPool2d(2, 2)
@@ -474,9 +274,9 @@ class GeneratorBlock(nn.Module):
         if self.initial:
             self.constant = nn.Parameter(torch.randn(1, inp_c, 4, 4), requires_grad=True)
         else:
-            self.conv1 = ScaledConv2d(inp_c, inp_c, kernel_size=3, padding=1)
+            self.conv1 = lreq.Conv2d(inp_c, inp_c, kernel_size=3, padding=1)
             
-        self.conv2 = ScaledConv2d(inp_c, oup_c, kernel_size=3, padding=1)
+        self.conv2 = lreq.Conv2d(inp_c, oup_c, kernel_size=3, padding=1)
         
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
         self.blur = Blur(inp_c)
@@ -526,8 +326,8 @@ class MappingNetwork(nn.Module):
         
         self.f = [BallProjection()]
         for _ in range(depth-1):
-            self.f.extend([ScaledLinear(code, code), nn.LeakyReLU(0.2)])
-        self.f = self.f + [ScaledLinear(code, code)]
+            self.f.extend([lreq.Linear(code, code), nn.LeakyReLU(0.2)])
+        self.f = self.f + [lreq.Linear(code, code)]
         self.f = nn.Sequential(*self.f)
     
     def forward(self, z1, scale, z2=None, p_mix=0.9):
@@ -557,8 +357,8 @@ class Discriminator(nn.Module):
         
         self.disc = []
         for index in range(depth - 1):            
-            self.disc.extend([ScaledLinear(code, code), nn.LeakyReLU(0.2)])
-        self.disc = self.disc + [ScaledLinear(code, 1)]
+            self.disc.extend([lreq.Linear(code, code), nn.LeakyReLU(0.2)])
+        self.disc = self.disc + [lreq.Linear(code, 1)]
         self.disc = nn.Sequential(*self.disc)
                 
     def forward(self, x):
