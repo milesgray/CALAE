@@ -135,7 +135,8 @@ class Fractal(Dataset):
 # Prepares a set of transformations that crops a certain scale square area randomly from each images
 # in a batch, effectively making a much larger dataset than individual image count suggests.
 # ------------------------------------------------------------------------------------------------------------------
-def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
+def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=512, 
+num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
     transform_list = []
     if isinstance(crop_mode, str):
         if crop_mode == 'random':

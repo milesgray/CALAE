@@ -33,7 +33,6 @@ def train_unet128(epoch, state_dict, model, optimizer, train_loader, valid_loade
         real_mask_tr_patches = create_patches_from_grid(real_mask_tr)
         real_mask_bl_patches = create_patches_from_grid(real_mask_bl)
         real_mask_br_patches = create_patches_from_grid(real_mask_br)
-
         # Run through 128 mask network and get reconstructed image
         recon_mask_all = model(Y_64_patches)
         recon_mask_tr, recon_mask_bl, recon_mask_br = split_masks_from_channels(recon_mask_all)

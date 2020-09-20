@@ -1115,7 +1115,8 @@ class PatchDiscriminator(NLayerDiscriminator):
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L535
 # ------------------------------------------------------------------------------------------------------------------
 class PatchSampleFeatureProjection(nn.Module):
-    def __init__(self, scale, use_perceptual=False, use_mlp=False, init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
+    def __init__(self, scale, use_perceptual=False, use_mlp=False, 
+                 init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
         # potential issues: currently, we use the same patch_ids for multiple images in the batch
         super().__init__()
         self.scale = scale
