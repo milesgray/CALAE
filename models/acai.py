@@ -61,7 +61,6 @@ class Autoencoder(nn.Module):
         elif part == 'decoder':
             sub_network.extend([nn.Conv2d(input_channels, depth, 3, padding=1), activation, nn.Conv2d(depth, colors, 3, padding=1)])
         
-        
         # Same initialization as in paper
         
         if 5 > 10:
@@ -93,9 +92,7 @@ class Critic(nn.Module):
         self.flatten = nn.Flatten()
         self.critic = Autoencoder._make_network(scales, depth, latent, colors, part='encoder',bn=False)
         
-        
     def forward(self, x):
-
         return self.flatten(self.critic(x)).mean(dim=1)
     
     def descriptor(self, x):

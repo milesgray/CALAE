@@ -52,8 +52,6 @@ class AddCoordsTh(nn.Module):
             ret = torch.cat([ret, rr], dim=1)
 
         return ret
-
-
 class CoordConvTh(nn.Module):
     """CoordConv layer as in the paper."""
     def __init__(self, x_dim, y_dim, with_r, *args, **kwargs):
@@ -124,7 +122,7 @@ class CoordConv(nn.Module):
 
 
 '''
-An alternative implementation for PyTorch with auto-infering the x-y dimensions.
+An alternative implementation for PyTorch with explicitly setting the x-y dimensions.
 '''
 class ExplicitAddCoords(nn.Module):
 
@@ -165,7 +163,6 @@ class ExplicitAddCoords(nn.Module):
 
 
 class ExplicitCoordConv(nn.Module):
-
     def __init__(self, in_channels, out_channels, box_coords, with_r=False, **kwargs):
         super().__init__()
         self.addcoords = ExplicitAddCoords(with_r=with_r)
