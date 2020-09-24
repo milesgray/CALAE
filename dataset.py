@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+import torchvision.datasets as datasets
 import torchvision.transforms.functional as TF
 import torch.nn.functional as F
 from PIL import Image
@@ -147,7 +148,7 @@ num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
     transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    transform_list.append(transforms.RandomGrayscale(p=0.1)) 
+    #transform_list.append(transforms.RandomGrayscale(p=0.1)) 
     transform_list.append(transforms.ToTensor())
     transform_list.append(transforms.Normalize(mean, std, inplace=True))
     
@@ -187,10 +188,9 @@ def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
     transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    transform_list.append(transforms.RandomGrayscale(p=0.1))     
+    #transform_list.append(transforms.RandomGrayscale(p=0.1))     
     transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
     transform_list.append(BuildOutput(mean, std))
-    
     
     dataset.transform = transforms.Compose(transform_list)
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
@@ -206,36 +206,69 @@ def _get_image_size(img):
         raise TypeError("Unexpected type {}".format(type(img)))
 
 class MultiCrop:
-    def __init__(self, crop_size, resize_size, count=5, crop_pad=0.1):
+    def __init__(self, crop_size, resize_size, count=5, crop_pad=0.1, use_pad=False):
         self.crop_size = crop_size
         self.resize_size = resize_size
         self.count = count
         self.crop_pad = crop_pad
+        self.use_pad = use_pad
 
     def __call__(self, x):
         x = self._check_size(x)
         results = []
         coords = []
         for i in range(self.count):
-            data, coord = self._random_crop(x, i)
+            data, coord = self._random_crop(x)
             results.append(data)
             coords.append(coord)
 
-        return (self._resize(results), coords)
+        return (self._resize_img(results), self._resize_coords(coords))
 
     def _check_size(self, x):
+        """ Ensures the image is big enough to 
+        """
         self.h, self.w = _get_image_size(x)
-        if self.h < (self.crop_size + (self.h * self.crop_pad)) or self.w < (self.crop_size + (self.w * self.crop_pad)):
-            if _is_pil_image(x):
-                return x.resize((int(self.w * 2), int(self.h * 2)))
-            elif isinstance(img, torch.Tensor) and img.dim() > 2:
-                return x.resize((int(self.w * 2), int(self.h * 2)))
+        # if not using padding boundary for valid crop area, then total size is just crop size
+        # if use pad is enforced, there is an extra amount of padding that is not valid, so the resulting image is larger
+        total_h = self.crop_size + (self.h * self.crop_pad) if self.use_pad else self.crop_size
+        total_w = self.crop_size + (self.w * self.crop_pad) if self.use_pad else self.crop_size
+        if self.h < total_h or self.w < total_w:
+            pad_amount = int(self.crop_size * self.crop_pad)
+            # calculate image size ratio to preserve preportions after resize
+            if self.h < self.w:
+                # smaller side will be equal to crop size + pad amount
+                ratio_h = 1
+                # larger side will be scaled up so that it stays larger
+                ratio_w = self.w / self.h
+                # unified ratio to increase size by based on smaller side
+                ratio_r = self.crop_size / self.h
             else:
+                ratio_h = self.h / self.w
+                ratio_w = 1
+                ratio_r = self.crop_size / self.w
+            # do resize based on if either PIL or Tensor
+            if _is_pil_image(x):                
+                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
+                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
+                            )
+                # get new size
+                self.h, self.w = _get_image_size(x)
+                return x
+            elif isinstance(img, torch.Tensor) and img.dim() > 2:
+                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
+                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
+                            )
+                # get new size
+                self.h, self.w = _get_image_size(x)
+                return x
+            else:
+                # Numpy? shouldn't happen...
                 return x
         else:
+            # image is large enough already
             return x
 
-    def _random_crop(self, x, i):
+    def _random_crop(self, x):
         # get total height and width of crop
         if isinstance(self.crop_size, int):
             th, tw = self.crop_size, self.crop_size
@@ -243,26 +276,29 @@ class MultiCrop:
             th, tw = int(self.crop_size), int(self.crop_size)
         else:
             th, tw = int(self.crop_size[0]), int(self.crop_size[1])
-        # calculate ratio to modify padding by to make it balanced on rectangles
-        if self.h < self.w:
-            ratio_h = self.h / self.w
-            ratio_w = 1.
+        if self.use_pad:
+            # calculate ratio to modify padding by to make it balanced on rectangles
+            if self.h < self.w:
+                ratio_h = self.h / self.w
+                ratio_w = 1.
+            else:
+                ratio_w = self.w / self.h
+                ratio_h = 1.
+            # calculate padding to ensure no overlap with corners
+            ph = int(self.h * self.crop_pad * ratio_h)
+            pw = int(self.w * self.crop_pad * ratio_w)
         else:
-            ratio_w = self.w / self.h
-            ratio_h = 1.
-        # calculate padding to ensure no overlap with corners
-        ph = int(self.h * self.crop_pad * ratio_h)
-        pw = int(self.w * self.crop_pad * ratio_w)
+            ph = pw = 0
         # calculate available space left over after crop and padding (max x/y)
         available_h = self.h - th - ph
         available_w = self.w - tw - pw  
         padding_h = padding_w = 0         
-        if available_h < th:
+        if available_h < 0:
             # this much extra room needed in height
-            padding_h = th - available_h            
-        if available_w < tw:
+            padding_h = abs(available_h)
+        if available_w < 0:
             # this many extra pixels needed in width
-            padding_w = tw - available_w
+            padding_w = abs(available_w)
         available_h += padding_h
         available_w += padding_w
 
@@ -272,12 +308,29 @@ class MultiCrop:
             mod_w = random.randint(ph, available_w)
 
         x1, y1, x2, y2 = mod_h, mod_w, mod_h + th - padding_h, mod_w + tw - padding_w
-        return TF.crop(x, x1, y1, x2, y2), (x1, y1, x2, y2)
+        # torchvision.transforms.functional.crop(img, top, left, height, width)
+        return TF.crop(x, y1, x1, abs(y2-y1), abs(x2-x1)), (x1, y1, x2, y2, self.h, self.w)
 
-    def _resize(self, results):
+    def _resize_img(self, results):
         resized = []
         for result in results:
             resized.append(result.resize((self.resize_size, self.resize_size)))
+        return resized
+
+    def _resize_coords(self, coords):
+        """ Scale the coordinates by the amount the crop was resized
+        """
+        resized = []
+        for coord in coords:
+            ratio = self.resize_size / self.crop_size
+            
+            x1 = int(coord[0] * ratio)
+            y1 = int(coord[1] * ratio)
+            x2 = int(coord[2] * ratio)
+            y2 = int(coord[3] * ratio)
+            h = int(coord[4] * ratio)
+            w = int(coord[5] * ratio)
+            resized.append((x1, y1, x2, y2, h, w))
         return resized
 
 class BuildOutput:
@@ -292,3 +345,70 @@ class BuildOutput:
         label = torch.Tensor(y)
 
         return data, label
+
+# ------------------------------------------------------------------------------------------------------------------
+# MultiCropDataset from SWAV that makes multiple crops of various sizes - close, but we want all the same size
+# ------------------------------------------------------------------------------------------------------------------
+
+class MultiCropDataset(datasets.ImageFolder):
+    def __init__(
+        self,
+        data_path,
+        size_crops,
+        nmb_crops,
+        min_scale_crops,
+        max_scale_crops,
+        size_dataset=-1,
+        return_index=False,
+    ):
+        super(MultiCropDataset, self).__init__(data_path)
+        assert len(size_crops) == len(nmb_crops)
+        assert len(min_scale_crops) == len(nmb_crops)
+        assert len(max_scale_crops) == len(nmb_crops)
+        if size_dataset >= 0:
+            self.samples = self.samples[:size_dataset]
+        self.return_index = return_index
+
+        trans = []
+        color_transform = transforms.Compose([get_color_distortion(), RandomGaussianBlur()])
+        mean = [0.485, 0.456, 0.406]
+        std = [0.228, 0.224, 0.225]
+        for i in range(len(size_crops)):
+            randomresizedcrop = transforms.RandomResizedCrop(
+                size_crops[i],
+                scale=(min_scale_crops[i], max_scale_crops[i]),
+            )
+            trans.extend([transforms.Compose([
+                randomresizedcrop,
+                transforms.RandomHorizontalFlip(p=0.5),
+                color_transform,
+                transforms.ToTensor(),
+                transforms.Normalize(mean=mean, std=std)])
+            ] * nmb_crops[i])
+        self.trans = trans
+
+    def __getitem__(self, index):
+        path, _ = self.samples[index]
+        image = self.loader(path)
+        multi_crops = list(map(lambda trans: trans(image), self.trans))
+        if self.return_index:
+            return index, multi_crops
+        return multi_crops
+
+
+class RandomGaussianBlur(object):
+    def __call__(self, img):
+        do_it = np.random.rand() > 0.5
+        if not do_it:
+            return img
+        sigma = np.random.rand() * 1.9 + 0.1
+        return cv2.GaussianBlur(np.asarray(img), (23, 23), sigma)
+
+
+def get_color_distortion(s=1.0):
+    # s is the strength of color distortion.
+    color_jitter = transforms.ColorJitter(0.8*s, 0.8*s, 0.8*s, 0.2*s)
+    rnd_color_jitter = transforms.RandomApply([color_jitter], p=0.8)
+    rnd_gray = transforms.RandomGrayscale(p=0.2)
+    color_distort = transforms.Compose([rnd_color_jitter, rnd_gray])
+    return color_distort
