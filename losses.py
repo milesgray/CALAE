@@ -150,28 +150,20 @@ def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, labels=None, use_tv=Fals
     
 def loss_generator_hessian(G, F, z, scale, alpha, 
                            hessian_layers=[3], 
-                           current_layer=[0]):
+                           current_layer=[0], 
+                           hessian_weight=0.01):
     loss = hessian_penalty(G, z=F(z, scale, z2=None, p_mix=0), scale=scale, alpha=alpha, return_norm=hessian_layers)
     if current_layer in hessian_layers:
         loss = h_loss * alpha    
-    return loss
+    return loss * hessian_weight
 #------------------ ENCODER
-def loss_encoder_hessian(E, samples, scale, alpha, 
-                         real_samples, fake_samples, 
-                         hessian_layers_fake=[-2], 
-                         hessian_layers_real=[-2], 
-                         current_layer=[-1]):
-    loss = 0
-    loss += hessian_penalty(E, z=real_samples, G_z=E_r, alpha=alpha, return_norm=hessian_layers_real)
-    loss += hessian_penalty(E, z=fake_samples, G_z=E_f, alpha=alpha, return_norm=hessian_layers_real)
-    return loss
-
-def loss_encoder_hessian(E, samples, scale, alpha, 
-                         hessian_layers=[-1,-2], current_layer=[-1]):
+def loss_encoder_hessian(E, samples, alpha, 
+                         hessian_layers=[-1,-2], current_layer=[-1], 
+                         hessian_weight=0.01):
     loss = hessian_penalty(E, z=samples, alpha=alpha, return_norm=hessian_layers)
-    if layer in current_layer:
+    if current_layer in hessian_layers:
         loss = loss * alpha
-    return loss
+    return loss * hessian_weight
 
 #############################################
 #### S T A N D A R D ########################
