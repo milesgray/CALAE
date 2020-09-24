@@ -68,3 +68,27 @@ class SelfAttention(nn.Module):
         
         out = self.gamma * out + x  # Calculate the residual weight parameter as self.gamma If the residual is 0, it is the identity mapping
         return out     #attention # Return 1.attention residual result 2.N*N attention map (what's the point)
+
+
+class CAM_Module(Module):
+    """ Channel attention module"""
+    def __init__(self, in_dim):
+        super(CAM_Module, self).__init__()
+        self.chanel_in = in_dim
+
+        self.gamma = Parameter(torch.zeros(1))
+        self.softmax  = Softmax(dim=-1)
+    def forward(self,x):
+        m_batchsize, C, height, width = x.size()
+        query = x.view(m_batchsize, C, -1)
+        key = x.view(m_batchsize, C, -1).permute(0, 2, 1)
+        energy = torch.bmm(query, key)
+        energy_new = torch.max(energy, -1, keepdim=True)[0].expand_as(energy)-energy
+        attention = self.softmax(energy_new)
+        value = x.view(m_batchsize, C, -1)
+
+        out = torch.bmm(attention, value)
+        out = out.view(m_batchsize, C, height, width)
+
+        out = self.gamma*out + x
+        return out
