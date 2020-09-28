@@ -3,6 +3,7 @@ from torch import nn
 import torch.nn.functional as F
 import math
 
+from .factory import Factory
 
 def activation_fn(features, name='prelu', inplace=True):
     '''
@@ -70,6 +71,35 @@ class CBR(nn.Module):
         output = self.act(output)
         return output
 
+
+class CBA(nn.Module):
+    '''
+    This class defines the convolution layer with batch normalization and activation
+    '''
+
+    def __init__(self, nIn, nOut, kSize, act="relu", stride=1, groups=1):
+        '''
+        :param nIn: number of input channels
+        :param nOut: number of output channels
+        :param kSize: kernel size
+        :param stride: stride rate for down-sampling. Default is 1
+        '''
+        super().__init__()
+        padding = int((kSize - 1) / 2)
+        self.conv = nn.Conv2d(nIn, nOut, kSize, stride=stride, padding=padding, bias=False, groups=groups)
+        self.bn = nn.BatchNorm2d(nOut)
+        self.act = Factory.get_activation(act)
+
+    def forward(self, input):
+        '''
+        :param input: input feature map
+        :return: transformed feature map
+        '''
+        output = self.conv(input)
+        # output = self.conv1(output)
+        output = self.bn(output)
+        output = self.act(output)
+        return output
 
 class BR(nn.Module):
     '''
@@ -237,7 +267,6 @@ class EffDWSepConv(nn.Module):
         s = '{name}(in_channels={channel_in}, out_channels={channel_out}, kernel_size={ksize})'
         return s.format(name=self.__class__.__name__, **self.__dict__)
 
-
 class StridedEffDWise(nn.Module):
     '''
     This class implements the strided volume-wise seperable convolutions
@@ -274,12 +303,12 @@ class StridedEffDWise(nn.Module):
 
 class EfficientPWConv(nn.Module):
     def __init__(self, nin, nout):
-        super(EfficientPWConv, self).__init__()
+        super().__init__()
         self.wt_layer = nn.Sequential(
-                        nn.AdaptiveAvgPool2d(output_size=1),
-                        nn.Conv2d(nin, nout, kernel_size=1, stride=1, padding=0, groups=1, bias=False),
-                        nn.Sigmoid()
-                    )
+                            nn.AdaptiveAvgPool2d(output_size=1),
+                            nn.Conv2d(nin, nout, kernel_size=1, stride=1, padding=0, groups=1, bias=False),
+                            nn.Sigmoid()
+                        )
 
         self.groups = math.gcd(nin, nout)
         self.expansion_layer = CBR(nin, nout, kSize=3, stride=1, groups=self.groups)
@@ -301,7 +330,7 @@ class EfficientPyrPool(nn.Module):
     """Efficient Pyramid Pooling Module"""
 
     def __init__(self, in_planes, proj_planes, out_planes, scales=[2.0, 1.5, 1.0, 0.5, 0.1], last_layer_br=True):
-        super(EfficientPyrPool, self).__init__()
+        super().__init__()
         self.stages = nn.ModuleList()
         scales.sort(reverse=True)
 
