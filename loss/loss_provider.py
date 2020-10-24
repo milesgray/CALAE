@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import os
+from pathlib import Path
 from collections import OrderedDict
 
 from color_wrapper import ColorWrapper, GreyscaleWrapper
@@ -11,16 +12,22 @@ from watson_vgg import WatsonDistanceVgg
 from robust_loss import RobustLoss
 from deep_loss import PNetLin
 from ssim import SSIM
+from psnr import PSNR
+from perceptual_style_loss import PerceptualAndStyleLoss
 
 
 class LossProvider():
-    def __init__(self):
-        self.loss_functions = ['L1', 'L2', 'SSIM', 'Watson-dct', 'Watson-fft', 'Watson-vgg', 'Deeploss-vgg', 'Deeploss-squeeze', 'Adaptive']
+    def __init__(self, max_color_value=1):
+        self.loss_functions = ['L1', 'L2', 'SSIM', 'Watson-dct', 
+                               'Watson-fft', 'Watson-vgg', 
+                               'Deeploss-vgg', 'Deeploss-squeeze', 
+                               'Adaptive', 'percept-style', 'psnr']
         self.color_models = ['LA', 'RGB']
+        self.max_color_value = max_color_value
 
     def load_state_dict(self, filename):
         current_dir = os.path.dirname(__file__)
-        path = os.path.join(current_dir, 'weights', filename)
+        path = Path(current_dir) / 'weights' / filename
         return torch.load(path, map_location='cpu')
     
     def get_loss_function(self, model, colorspace='RGB', reduction='sum', deterministic=False, pretrained=True, image_size=None):
@@ -117,6 +124,16 @@ class LossProvider():
                 loss = RobustLoss(image_size=image_size, use_gpu=False, trainable=False, reduction=reduction)
                 if pretrained: 
                     loss.load_state_dict(map_weights(self.load_state_dict('rgb_adaptive_trial0.pth')))
+        elif model.lower() in ['percept-style']:
+            if is_greyscale:
+                loss = GreyscaleWrapper(PerceptualAndStyleLoss, (), {'use_perceptual_loss': True, 'use_style_loss': True})
+            else:
+                loss = PerceptualAndStyleLoss(use_perceptual_loss=True, use_style_loss=True)
+        elif model.lower() in ['psnr']:
+            if is_greyscale:
+                loss = GreyscaleWrapper(PSNR, (), {'max_value': self.max_color_value})
+            else:
+                loss = PSNR(max_value=self.max_color_value)
         else:
             raise Exception('Metric "{}" not implemented'.format(model))
 

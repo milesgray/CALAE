@@ -1,14 +1,15 @@
 import torch
+from torch import nn
 from torch.nn import functional as F
 
 
-class PSNR:
-
+class PSNR(nn.Module):
     def __init__(self, max_value: int = 1):
+        super().__init__()
         self.name = "PSNR"
         self.max_value = max_value
 
-    def __call__(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
+    def forward(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
         assert image_1.shape == image_2.shape, "For a meaningful PSNR calculation, the shape of image_1 and image_2 should be the same"
 
         if len(image_1.shape) == 4:
