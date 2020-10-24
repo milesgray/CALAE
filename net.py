@@ -215,7 +215,7 @@ class PixelAttention1D(nn.Module):
     '''PA is pixel attention'''
     def __init__(self, nf):
         super(PixelAttention1D, self).__init__()
-        self.conv = nn.Conv1d(nf, nf, 1)
+        self.conv = lreq.Linear(nf, nf)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
@@ -869,8 +869,8 @@ class LearnableGaussianTransform1d(nn.Module):
         self.A = lreq.Linear(scale[0], scale[1], bias=True)
 
     def forward(self, x):
-        z = self.A.linear.weight * x
-        x = self.A.linear.bias.exp() * x
+        z = self.A.weight * x
+        x = self.A.bias.exp() * x
       
         z = z + (x - 1)
         return z
