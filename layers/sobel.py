@@ -1,10 +1,11 @@
 # Helpful Tips: https://stackoverflow.com/questions/9567882/sobel-filter-kernel-of-large-size/
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-np.set_printoptions(threshold=np.nan)
+np.set_printoptions(threshold=sys.maxsize)
 from math import exp
 import cv2
 import matplotlib.pyplot as plt
