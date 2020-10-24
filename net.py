@@ -211,6 +211,20 @@ class LinearBlock(nn.Module):
             out = self.activation(out)
         return out
 
+class PixelAttention1D(nn.Module):
+    '''PA is pixel attention'''
+    def __init__(self, nf):
+        super(PixelAttention1D, self).__init__()
+        self.conv = nn.Conv1d(nf, nf, 1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        y = self.conv(x)
+        y = self.sigmoid(y)
+        out = torch.mul(x, y)
+
+        return out
+
 ####################################################################################################################
 ############# C O M P O N E N T ######################################----------------------------------------------
 ############# F A C T O R Y ####################--------------------------------------------------------------------
@@ -1480,35 +1494,38 @@ class GeneratorSkipBlock(nn.Module):
 # Feature Projection Network from ALAE, customized
 # ------------------------------------------------------------------------------------------------------------------
 class FeatureProjectionNetwork(nn.Module):
-    def __init__(self, code=512, depth=4, norm='none', act='leaky', skip_delay=0, verbose=False):
+    def __init__(self, code=512, depth=4, norm='none', act='leaky', use_attn=True, skip_delay=0, verbose=False):
         super().__init__()
         self.verbose = verbose
         self.code = code
         self.act = act
         self.norm = norm
+        self.use_attn = use_attn
         
         self.f = [BallProjection()]
         for i in range(depth-1):
-            if verbose: print(f"[Discriminator]\t Block {i} for {code}d code using norm {norm}, act {act} and a residual skip delay of {skip_delay} (only applies if non zero)")   
+            if verbose: print(f"[FeatureProjectionNetwork]\t Block {i} for {code}d code using norm {norm}, act {act} and a residual skip delay of {skip_delay} (only applies if non zero)")   
                         
             layer = self.build_layer(code)
             if skip_delay > 0 and i >= skip_delay:
-                layer += self.disc[i-skip_delay]
+                layer += self.f[i-skip_delay]
             
             self.f.extend(layer)
-        self.f = self.f + [LearnableGaussianTransform1d(code, code)]
+        self.f = self.f + [LearnableGaussianTransform1d(code=code)]
         self.f = nn.Sequential(*self.f)
 
     def build_layer(self, code, skip=None):
         layer = []
-        layer.append(LearnableGaussianTransform1d(code, code))
-
-        if self.norm:
-            layer.append(Factory.get_normalization(self.norm))
+        layer.append(LearnableGaussianTransform1d(code))
+        
         if self.act:
             layer.append(Factory.get_activation(self.act)) 
+        if self.norm:
+            layer.append(Normalize(power=2))
         if self.act == "selu":
-            layer.append(nn.AlphaDropout(0.05))       
+            layer.append(nn.AlphaDropout(0.05))
+        if self.use_attn:   
+            layer.append(PixelAttention1D(code))
             
         return layer
     
