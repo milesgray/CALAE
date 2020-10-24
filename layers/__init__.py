@@ -11,6 +11,7 @@ from .lreq import *
 from .made import *
 from .norm_flow import *
 from .normalize import *
+from .upsample import *
 from .scaled import *
 from .sobel import *
 from .switch_norm import *
