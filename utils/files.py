@@ -1,12 +1,13 @@
-import requests
-import html
-import hashlib
-import glob
 import os
 import io
-from typing import Any
 import re
 import uuid
+import html
+import glob
+import hashlib
+import pathlib
+import requests
+from typing import Any
 
 def is_url(obj: Any) -> bool:
     """Determine whether the given object is a valid URL string."""
@@ -22,7 +23,6 @@ def is_url(obj: Any) -> bool:
     except:
         return False
     return True
-
 
 def open_url(url: str, cache_dir: str = None, num_attempts: int = 10, verbose: bool = True, return_path: bool = False) -> Any:
     """Download the given URL and return a binary-mode file object to access the data."""
@@ -89,3 +89,21 @@ def open_url(url: str, cache_dir: str = None, num_attempts: int = 10, verbose: b
 
     # Return data as file object.
     return io.BytesIO(url_data)
+
+def ensure_dir(path, verbose=False):
+    path = pathlib.Path(path)
+    if not path.exists():
+        path.mkdir(parents=True)
+        if verbose: print(f"[INFO]\t Created {path.absolute()}")
+    else:
+        if verbose: print(f"[INFO]\t Using {path.absolute()}")
+    return path
+
+def ensure_parent_dir(path, verbose=False):
+    path = pathlib.Path(path)
+    if not path.parent.exists():
+        path.parent.mkdir(parents=True)
+        if verbose: print(f"[INFO]\t Created {path.absolute()}")
+    else:
+        if verbose: print(f"[INFO]\t Using {path.absolute()}")
+    return path
