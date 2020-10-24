@@ -1511,12 +1511,12 @@ class FeatureProjectionNetwork(nn.Module):
                 layer += self.f[i-skip_delay]
             
             self.f.extend(layer)
-        self.f = self.f + [lreq.Linear(code)]
+        self.f = self.f + [lreq.Linear(code, code)]
         self.f = nn.Sequential(*self.f)
 
     def build_layer(self, code, skip=None):
         layer = []
-        layer.append(lreq.Linear(code))
+        layer.append(lreq.Linear(code, code))
         
         if self.act:
             layer.append(Factory.get_activation(self.act)) 
