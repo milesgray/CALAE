@@ -1337,8 +1337,8 @@ class GeneratorBlock(nn.Module):
         self.B2 = set_scale(IntermediateNoise(oup_c))
         # Learnable affine transform
         if self.learn_noise:
-            self.B1_affine = LearnableGaussianTransform1d(scale=(inp_c, code))
-            self.B2_affine = LearnableGaussianTransform1d(scale=(inp_c, code))
+            self.B1_affine = LearnableGaussianTransform2d(scale=(inp_c, scale))
+            self.B2_affine = LearnableGaussianTransform2d(scale=(inp_c, scale))
         if self.learn_style:
             self.w1_affine = LearnableGaussianTransform0d(scale=code)
             self.w2_affine = LearnableGaussianTransform0d(scale=code)
