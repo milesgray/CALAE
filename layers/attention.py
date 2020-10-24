@@ -111,8 +111,8 @@ class SelfAttention(nn.Module):
         out = self.gamma * out + x  # Calculate the residual weight parameter as self.gamma If the residual is 0, it is the identity mapping
         return out     #attention # Return 1.attention residual result 2.N*N attention map (what's the point)
 
-
-class ChannelAttentionModule(Module):
+# CAM module
+class ChannelAttentionModule(nn.Module):
     """ Channel attention module"""
     def __init__(self, in_dim):
         super(ChannelAttentionModule, self).__init__()
