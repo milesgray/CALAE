@@ -1331,7 +1331,7 @@ class GeneratorBlock(nn.Module):
             self.residual_gain = nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)))
             self.res_conv = lreq.Conv2d(inp_c, oup_c, kernel_size=3, stride=1, padding=1) # 
             self.res_upsample = nn.UpsamplingBilinear2d(scale_factor=2)
-            self.res_ups_affine = LearnableGaussianTransform0d(scale=oup_c)
+            self.res_ups_affine = LearnableGaussianTransform2d(scale=(oup_c, scale))
 
         # Learnable noise coefficients
         self.B1 = set_scale(IntermediateNoise(inp_c))
