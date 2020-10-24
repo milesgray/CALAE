@@ -23,6 +23,7 @@ from layers import lreq
 import losses
 from layers.activations import Mish
 from layers.attention import UNetAttention, SelfAttention, TripletAttention
+from layers.spectralnorm import SNConv2d, SNLinear
 
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -340,7 +341,7 @@ class Factory:
         elif norm in ['act', 'an', 'actnorm']:
             return ActNorm(**kwargs)
         elif norm in ['ln', 'layer', 'layernorm']:
-            return nn.LayerNorm(norm_dim, **kwargs)
+            return LayerNorm(norm_dim, **kwargs)
         elif norm == 'none':
             return nn.Identity()
         else:
@@ -1475,12 +1476,12 @@ class FeatureProjectionNetwork(nn.Module):
                 layer += self.disc[i-skip_delay]
             
             self.f.extend(layer)
-        self.f = self.f + [ScaledLinear(code, code)]
+        self.f = self.f + [LearnableGaussianTransform1d(code, code)]
         self.f = nn.Sequential(*self.f)
 
     def build_layer(self, code, skip=None):
         layer = []
-        layer.append(ScaledLinear(code, code))
+        layer.append(LearnableGaussianTransform1d(code, code))
 
         if self.norm:
             layer.append(Factory.get_normalization(self.norm))
