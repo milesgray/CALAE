@@ -1,4 +1,5 @@
 import torch
+from torch import Tensor
 
 
 def euclidean_distance(tensor_1: Tensor, tensor_2: Tensor, mask: Tensor = None) -> Tensor:
