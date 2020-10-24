@@ -1329,7 +1329,8 @@ class GeneratorBlock(nn.Module):
                 self.blur_affine = set_scale(LearnableAffineTransform2d(scale=(inp_c, scale)))
         if self.learn_residual:
             self.residual_gain = nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)))
-            self.res_upsample = lreq.ConvTranspose2d(inp_c, oup_c, kernel_size=4, stride=2, padding=0) # nn.UpsamplingBilinear2d(scale_factor=2)
+            self.res_conv = lreq.Conv2d(inp_c, oup_c, kernel_size=3, stride=1, padding=1) # 
+            self.res_upsample = nn.UpsamplingBilinear2d(scale_factor=2)
             self.res_ups_affine = set_scale(LearnableGaussianTransform0d(scale=oup_c))    
 
         # Learnable noise coefficients
@@ -1403,6 +1404,7 @@ class GeneratorBlock(nn.Module):
         x = self.ada_norm2(x, w)
 
         if self.learn_residual and not self.initial:
+            i = self.res_conv(i)
             i = self.res_upsample(i)
             i = self.res_ups_affine(i)
             ratio = F.softmax(self.residual_gain, dim=0)
