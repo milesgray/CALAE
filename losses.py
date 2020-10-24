@@ -122,7 +122,8 @@ def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
 
     return loss
 
-def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, labels=None, use_tv=False, tv_weight=0.001):
+def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, 
+                     labels=None, use_tv=False, tv_weight=0.001):
     # Hessian applied to G here
     F_z = F(z, scale, z2=None, p_mix=0)
     
@@ -167,6 +168,16 @@ def loss_encoder_hessian(E, samples, alpha, scale_alpha=False,
     if current_layer in hessian_layers or scale_alpha:
         loss = loss * alpha
     return loss * hessian_weight
+
+#############################################
+
+def fft_loss(x, y, dim=2, diff_fn=lambda x,y: torch.abs(x-y)):
+    xf = torch.rfft(x, 3)
+    yf = torch.rfft(y, 3)
+    diff = diff_fn(xf[dim], yf[dim])
+    loss = diff.mean()
+    return loss
+
 
 #############################################
 #### S T A N D A R D ########################
