@@ -7,7 +7,7 @@ from torch.autograd import Function
 from torch.nn import functional as F
 import numpy as np
 
-from switch_norm import SwitchNorm1d, SwitchNorm2d, SwitchNorm3d
+from .switch_norm import SwitchNorm1d, SwitchNorm2d, SwitchNorm3d
 
 ####################################################################################################################
 ###### N O R M A L I Z A T I O N #########--------------------------------------------------------------------------
