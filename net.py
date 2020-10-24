@@ -444,7 +444,7 @@ class PixelNorm(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, x, style, alpha=1e-8):
+    def forward(self, x, alpha=1e-8):
         """
         x - (N x C x H x W)
         :param x: input activations volume
@@ -492,7 +492,6 @@ class Gaussianize(nn.Module):
         x2 = m + z2 * torch.exp(logs)
         logdet = logs.sum([1,2,3])
         return x2, logdet
-
 # ------------------------------------------------------------------------------------------------------------------
 # Planar Transformation
 # Used in normalized flows, computes and returns the jacobian as well as a learnable complex affine transform
