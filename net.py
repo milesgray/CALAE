@@ -339,7 +339,7 @@ class Factory:
             return PixelNorm(**kwargs)
         elif norm in ['act', 'an', 'actnorm']:
             return ActNorm(**kwargs)
-        elif norm in ['ln'. 'layer', 'layernorm']:
+        elif norm in ['ln', 'layer', 'layernorm']:
             return nn.LayerNorm(norm_dim, **kwargs)
         elif norm == 'none':
             return nn.Identity()
