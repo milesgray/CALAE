@@ -14,8 +14,8 @@ from math import log2, ceil
 from torch.autograd import Function
 from torch.nn import functional as F
 
-from ..layers.scaled_layers import set_scale
-import ..layers.lreq as lreq
+from CALAE.layers.scaled import set_scale
+import CALAE.layers.lreq as lreq
 
 ####################################################################################################################
 ################################################## Level 1 blocks ##################################################

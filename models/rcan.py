@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-import ..util.sr as arch_util
+import CALAE.util.sr as arch_util
 
 ## Channel Attention (CA) Layer
 class CALayer(nn.Module):
