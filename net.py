@@ -21,7 +21,7 @@ from metrics.perceptual import PerceptualLoss
 from layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
 import losses
 from layers.activations import Mish
-from layers.attention import Attention, SelfAttention
+from layers.attention import UNetAttention, SelfAttention, TripletAttention
 
 # ------------------------------------------------------------------------------------------------------------------
 
