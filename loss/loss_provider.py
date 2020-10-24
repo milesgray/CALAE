@@ -4,16 +4,16 @@ import os
 from pathlib import Path
 from collections import OrderedDict
 
-from color_wrapper import ColorWrapper, GreyscaleWrapper
-from shift_wrapper import ShiftWrapper
-from watson import WatsonDistance
-from watson_fft import WatsonDistanceFft
-from watson_vgg import WatsonDistanceVgg
-from robust_loss import RobustLoss
-from deep_loss import PNetLin
-from ssim import SSIM
-from psnr import PSNR
-from perceptual_style_loss import PerceptualAndStyleLoss
+from .color_wrapper import ColorWrapper, GreyscaleWrapper
+from .shift_wrapper import ShiftWrapper
+from .watson import WatsonDistance
+from .watson_fft import WatsonDistanceFft
+from .watson_vgg import WatsonDistanceVgg
+from .robust_loss import RobustLoss
+from .deep_loss import PNetLin
+from .ssim import SSIM
+from .psnr import PSNR
+from .perceptual_style_loss import PerceptualAndStyleLoss
 
 
 class LossProvider():

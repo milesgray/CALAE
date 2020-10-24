@@ -8,58 +8,30 @@ from PIL import Image
 from matplotlib import pyplot as plt
 import utils
 
-download.from_google_drive('1CIDc9i070KQhHlkr4yIwoJC8xqrwjE0_', directory="metrics")
-
-
-def downscale(images):
-    if images.shape[2] > 256:
-        factor = images.shape[2] // 256
-        images = torch.reshape(images,
-                               [-1, images.shape[1], images.shape[2] // factor, factor, images.shape[3] // factor,
-                                factor])
-        images = torch.mean(images, dim=(3, 5))
-    images = np.clip((images.cpu().numpy() + 1.0) * 127, 0, 255).astype(np.uint8)
-    return images
-
-
 class LPIPS:
-    def __init__(self, cfg, num_images, minibatch_size):
-        self.num_images = num_images
-        self.minibatch_size = minibatch_size
-        self.cfg = cfg
+    '''
+    borrowed from https://github.com/richzhang/PerceptualSimilarity
+    '''
+    def __init__(self, cuda, des="Learned Perceptual Image Patch Similarity", version="0.1"):
+        self.des = des
+        self.version = version
+        self.model = lpips.PerceptualLoss(model='net-lin',net='alex',use_gpu=cuda)
 
-    def evaluate(self, logger, mapping, decoder, encoder, lod):
-        gpu_count = torch.cuda.device_count()
-        distance_measure = pickle.load(open('metrics/vgg16_zhang_perceptual.pkl', 'rb'))
+    def __repr__(self):
+        return "LPIPS"
 
-        dataset = TFRecordsDataset(self.cfg, logger, rank=0, world_size=1, buffer_size_mb=128,
-                                   channels=self.cfg.MODEL.CHANNELS, train=False)
-
-        dataset.reset(lod + 2, self.minibatch_size)
-        batches = make_dataloader(self.cfg, logger, dataset, self.minibatch_size, 0,)
-
-        distance = []
-        num_images_processed = 0
-        for idx, x in tqdm(enumerate(batches)):
-            torch.cuda.set_device(0)
-            x = (x / 127.5 - 1.)
-
-            Z = encoder(x, lod, 1)
-            Z = Z.repeat(1, mapping.num_layers, 1)
-
-            images = decoder(Z, lod, 1.0, noise=True)
-
-            images = downscale(images)
-            images_ref = downscale(torch.tensor(x))
-
-            res = distance_measure.run(images, images_ref, num_gpus=gpu_count, assume_frozen=True)
-            distance.append(res)
-            num_images_processed += x.shape[0]
-            if num_images_processed > self.num_images:
-                break
-
-        print(len(distance))
-        logger.info("Result = %f" % (np.asarray(distance).mean()))
+    def __call__(self, y_pred, y_true, normalized=True):
+        """
+        args:
+            y_true : 4-d ndarray in [batch_size, channels, img_rows, img_cols]
+            y_pred : 4-d ndarray in [batch_size, channels, img_rows, img_cols]
+            normalized : change [0,1] => [-1,1] (default by LPIPS)
+        return LPIPS, smaller the better
+        """
+        if normalized:
+            y_pred = y_pred * 2.0 - 1.0
+            y_true = y_true * 2.0 - 1.0
+        return self.model.forward(y_pred, y_true)
 
 
 def sample(cfg, logger):
