@@ -1,5 +1,6 @@
 import torch
-from bicubic import BicubicDownSample
+from torch import nn
+from .bicubic import BicubicDownSample
 
 class LossBuilder(torch.nn.Module):
     def __init__(self, ref_im, loss_str, eps):
