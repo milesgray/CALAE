@@ -1511,12 +1511,12 @@ class FeatureProjectionNetwork(nn.Module):
                 layer += self.f[i-skip_delay]
             
             self.f.extend(layer)
-        self.f = self.f + [LearnableGaussianTransform1d(code=code)]
+        self.f = self.f + [LearnableGaussianTransform1d(scale=code)]
         self.f = nn.Sequential(*self.f)
 
     def build_layer(self, code, skip=None):
         layer = []
-        layer.append(LearnableGaussianTransform1d(code))
+        layer.append(LearnableGaussianTransform1d(scale=code))
         
         if self.act:
             layer.append(Factory.get_activation(self.act)) 
