@@ -1,12 +1,10 @@
 import torch.utils.data
 from torchvision.utils import save_image
-from net import *
-from model import Model
-from launcher import run
-from checkpointer import Checkpointer
+from ..net import *
+from ..models import Model
 from dlutils.pytorch import count_parameters
 from defaults import get_cfg_defaults
-import layers.lreq
+import ..layers.lreq
 
 from PIL import Image
 

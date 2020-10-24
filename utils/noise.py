@@ -55,7 +55,7 @@ class Waver(nn.Module):
         return (waveNumbers + self.learnedWN) * c
 learnedWN = Waver()
 
-def setNoise(noise, zGL=Z_GL, zPeriodic=Z_PERIODIC):
+def set_noise(noise, zGL=Z_GL, zPeriodic=Z_PERIODIC):
     noise=noise.detach()*1.0
     noise.uniform_(-1, 1)  # normal_(0, 1)
     if zGL:
