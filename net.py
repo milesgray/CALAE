@@ -16,7 +16,7 @@ from math import log2, ceil
 from torch.autograd import Function
 from torch.nn import functional as F
 
-from models.unet_generator import *
+#from models.unet_generator import *
 from metrics.perceptual import PerceptualLoss
 from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
 import losses
