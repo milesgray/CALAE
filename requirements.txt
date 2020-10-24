@@ -4,3 +4,4 @@ torchvision
 numpy
 pandas
 lpips
+piq

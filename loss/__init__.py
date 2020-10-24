@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 
+from .loss_provider import LossProvider
 
 def gram_matrix(features: Tensor, mask: Tensor) -> Tensor:
     batch_size, num_channels, height, width = features.shape

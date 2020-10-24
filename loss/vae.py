@@ -9,17 +9,15 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch import optim
 
-from .discriminator import Discriminator
-from disvae.utils.math import (log_density_gaussian, log_importance_weight_matrix,
+from ..models import ALAEDisriminator as Discriminator
+from ..util import (log_density_gaussian, log_importance_weight_matrix,
                                matrix_log_density_gaussian)
 
 
 LOSSES = ["VAE", "betaH", "betaB", "factor", "btcvae"]
 RECON_DIST = ["bernoulli", "laplace", "gaussian"]
 
-
-# TO-DO: clean n_data and device
-def get_loss_f(loss_name, **kwargs_parse):
+def get_vae_loss(loss_name, **kwargs_parse):
     """Return the correct loss function given the argparse arguments."""
     kwargs_all = dict(rec_dist=kwargs_parse["rec_dist"],
                       steps_anneal=kwargs_parse["reg_anneal"])
@@ -113,7 +111,6 @@ class BaseLoss(abc.ABC):
 
         return storer
 
-
 class BetaHLoss(BaseLoss):
     """
     Compute the Beta-VAE loss as in [1]
@@ -151,7 +148,6 @@ class BetaHLoss(BaseLoss):
             storer['loss'].append(loss.item())
 
         return loss
-
 
 class BetaBLoss(BaseLoss):
     """
@@ -200,7 +196,6 @@ class BetaBLoss(BaseLoss):
             storer['loss'].append(loss.item())
 
         return loss
-
 
 class FactorKLoss(BaseLoss):
     """
@@ -309,7 +304,6 @@ class FactorKLoss(BaseLoss):
             storer['discrim_loss'].append(d_tc_loss.item())
 
         return vae_loss
-
 
 class BtcvaeLoss(BaseLoss):
     """
