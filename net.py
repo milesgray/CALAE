@@ -18,7 +18,7 @@ from torch.nn import functional as F
 
 #from models.unet_generator import *
 from metrics.perceptual import PerceptualLoss
-from scaled_layers import set_scale, ScaledLinear, ScaledConv2d 
+from layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
 import losses
 from layers.activations import Mish
 from layers.attention import Attention, SelfAttention
