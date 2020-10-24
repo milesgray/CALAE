@@ -10,8 +10,10 @@ from typing import List, Callable, Union, Any, TypeVar, Tuple
 # from torch import tensor as Tensor
 
 Tensor = TypeVar('torch.tensor')
-from hessian_penalty import hessian_penalty
-from metrics.perceptual import PerceptualLoss
+from .loss.hessian_penalty import hessian_penalty
+from .metrics.perceptual import PerceptualLoss
+import lpips
+import piq
 
 def zero_centered_gradient_penalty(real_samples, real_prediction):
     """
