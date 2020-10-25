@@ -460,31 +460,53 @@ def ssim(img1, img2, window_size=11, window=None, size_average=True, full=False,
         return ret, cs
     return ret
 
-def msssim(img1, img2, window_size=11, size_average=True, val_range=2, normalize=True):
-    device = img1.device
-    weights = torch.FloatTensor([0.0448, 0.2856, 0.3001, 0.2363, 0.1333]).to(device)
-    mssim = []
-    mcs = []
-    for i in range(5):
-        sim, cs = ssim(img1, img2, window_size=window_size, size_average=size_average, full=True, val_range=val_range)
-        mssim.append(sim)
-        mcs.append(cs)
-        if img1.shape[2] > 1 and i + 1 < 5:
-            img1 = F.avg_pool2d(img1, (2, 2))
-            img2 = F.avg_pool2d(img2, (2, 2)) 
-    mssim = torch.stack(mssim)
-    mcs = torch.stack(mcs)
+def ms_ssim(X_a, X_b, window_size=11, size_average=True, C1=0.01**2, C2=0.03**2):
+    """
+    Taken from Po-Hsun-Su/pytorch-ssim
+    """
 
-    # Normalize (to avoid NaNs during training unstable models, not compliant with original definition)
-    if normalize:
-        mssim = (mssim + 1) / 2
-        mcs = (mcs + 1) / 2
+    channel = X_a.size(1)
 
-    pow1 = mcs ** weights
-    pow2 = mssim ** weights
-    # From Matlab implementation https://ece.uwaterloo.ca/~z70wang/research/iwssim/
-    output = torch.prod(pow1[:-1] * pow2[-1])
-    return output
+    def gaussian(sigma=1.5):
+        gauss = torch.Tensor(
+            [math.exp(-(x - window_size // 2) **
+                      2 / float(2 * sigma ** 2)) for x in range(window_size)])
+        return gauss / gauss.sum()
+
+    def create_window():
+        _1D_window = gaussian(window_size).unsqueeze(1)
+        _2D_window = _1D_window.mm(
+            _1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+        window = torch.Tensor(
+            _2D_window.expand(channel, 1, window_size,
+                              window_size).contiguous())
+        return window.cuda()
+
+    window = create_window()
+
+    mu1 = torch.nn.functional.conv2d(X_a, window,
+                                     padding=window_size // 2, groups=channel)
+    mu2 = torch.nn.functional.conv2d(X_b, window,
+                                     padding=window_size // 2, groups=channel)
+
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = torch.nn.functional.conv2d(
+        X_a * X_a, window, padding=window_size // 2, groups=channel) - mu1_sq
+    sigma2_sq = torch.nn.functional.conv2d(
+        X_b * X_b, window, padding=window_size // 2, groups=channel) - mu2_sq
+    sigma12 = torch.nn.functional.conv2d(
+        X_a * X_b, window, padding=window_size // 2, groups=channel) - mu1_mu2
+
+    ssim_map = (((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) /
+                ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)))
+
+    if size_average:
+        return ssim_map.mean()
+    else:
+        return ssim_map.mean(1).mean(1).mean(1)
 
 ##########################################################################################
 #### S O B E L ###########################################################################
@@ -592,6 +614,36 @@ def discriminator_gradient_penalty(d_result_real, reals, r1_gamma=10.0):
     loss = r1_penalty * (r1_gamma * 0.5)
     return loss.mean()
 
+def contrastive_gradient_penalty(network, input, penalty_amount=1.):
+    """Contrastive gradient penalty.
+    This is essentially the loss introduced by Mescheder et al 2018.
+    Args:
+        network: Network to apply penalty through.
+        input: Input or list of inputs for network.
+        penalty_amount: Amount of penalty.
+    Returns:
+        torch.Tensor: gradient penalty loss.
+    """
+    def _get_gradient(inp, output):
+        gradient = autograd.grad(outputs=output, inputs=inp,
+                                 grad_outputs=torch.ones_like(output),
+                                 create_graph=True, retain_graph=True,
+                                 only_inputs=True, allow_unused=True)[0]
+        return gradient
+
+    if not isinstance(input, (list, tuple)):
+        input = [input]
+
+    input = [inp.detach() for inp in input]
+    input = [inp.requires_grad_() for inp in input]
+
+    with torch.set_grad_enabled(True):
+        output = network(*input)[-1]
+    gradient = _get_gradient(input, output)
+    gradient = gradient.view(gradient.size()[0], -1)
+    penalty = (gradient ** 2).sum(1).mean()
+
+    return penalty * penalty_amount
 
 ####################################################################################################################
 ############### M O D U L E S ##################--------------------------------------------------------------------
