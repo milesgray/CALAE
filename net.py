@@ -1215,7 +1215,7 @@ class StyleGAN2Discriminator(nn.Module):
         self.stddev_group = 4
         self.stddev_feat = 1
 
-        self.final_conv = ConvLayer(in_channel + 1, channels[4], 3)
+        self.final_conv = stylegan2.ConvLayer(in_channel + 1, channels[4], 3)
         self.final_linear = nn.Sequential(
             stylegan2.EqualLinear(channels[4] * 4 * 4, channels[4], activation='fused_lrelu'),
             stylegan2.EqualLinear(channels[4], 1),
