@@ -13,6 +13,21 @@ lreq.use_implicit_lreq.set(True)
 src_len = 5
 dst_len = 6
 
+def mix_latents(s, aug_s, v, aug_v):
+	if(random.choice([0, 1])==0):
+		ret_v = v
+	else:
+		ret_v = aug_v
+
+	ret_s = []
+
+	for i in range(len(s)):
+		if(random.choice([0, 1])==0):
+			ret_s.append(s[i])
+		else:
+			ret_s.append(aug_s[i])
+
+	return ret_s, ret_v
 
 def place(canvas, image, x, y):
     image = image.cpu().detach().numpy()
