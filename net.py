@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import spectral_norm, remove_spectral_norm
 import torch.distributions as D
- 
+ from torch.autograd import Function
+from torch.nn import functional as F
+
 import numpy as np
 from typing import List, Callable, Union, Any, TypeVar, Tuple
 # from torch import tensor as Tensor
@@ -13,10 +15,8 @@ import random
 import functools
 from math import log2, ceil
 
-from torch.autograd import Function
-from torch.nn import functional as F
-
 #from models.unet_generator import *
+from models import stylegan2
 from metrics.perceptual import PerceptualLoss
 from layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
 from layers import lreq
@@ -958,17 +958,46 @@ class FromRGB(nn.Module):
 # Outputs an image with values scaled to [-1, 1]
 # ------------------------------------------------------------------------------------------------------------------
 class ToRGB(nn.Module):
-    def __init__(self, inp_c, oup_c):
+    def __init__(self, inp_c, oup_c, use_bias=False):
         super(ToRGB, self).__init__()
         self.to_rgb = ScaledConv2d(inp_c, oup_c, 1, 1, 0)
         self.upsample = nn.UpsamplingBilinear2d(scale_factor=2)
+        self.use_bias = use_bias
+        if self.use_bias:
+            self.bias = nn.Parameter(torch.zeros(1, 3, 1, 1))
             
     def forward(self, x, upsample=False):
+        x = x.contiguous()
         if upsample:
-            return self.to_rgb(self.upsample(x.contiguous()))
-        else:
-            return self.to_rgb(x.contiguous())
+            x = self.upsample(x)
+        x = self.to_rgb(x)
+        if self.use_bias:
+            x = x + self.bias
+        return x
+# ------------------------------------------------------------------------------------------------------------------
+# Projection from Feature Space to RGB Space from StyleGAN2, also considers a style context
+# Outputs an image with values scaled to [-1, 1]
+# ------------------------------------------------------------------------------------------------------------------
+class ToRGB(nn.Module):
+    def __init__(self, in_channel, style_dim, upsample=True, blur_kernel=[1, 3, 3, 1]):
+        super().__init__()
 
+        if upsample:
+            self.upsample = stylegan2.Upsample(blur_kernel)
+
+        self.conv = stylegan2.ModulatedConv2d(in_channel, 3, 1, style_dim, demodulate=False)
+        self.bias = nn.Parameter(torch.zeros(1, 3, 1, 1))
+
+    def forward(self, input, style, skip=None):
+        out = self.conv(input, style)
+        out = out + self.bias
+
+        if skip is not None:
+            skip = self.upsample(skip)
+
+            out = out + skip
+
+        return out
 ####################################################################################################################
 ################################################## Level 2 blocks ##################################################
 ####################################################################################################################
@@ -1145,6 +1174,73 @@ class PatchDiscriminator(NLayerDiscriminator):
         x = x.view(B, C, Y, size, X, size)
         x = x.permute(0, 2, 4, 1, 3, 5).contiguous().view(B * Y * X, C, size, size)
         return super().forward(x)
+
+
+# ------------------------------------------------------------------------------------------------------------------
+# Discriminator used in StyleGAN2
+# https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L1375
+# ------------------------------------------------------------------------------------------------------------------
+class StyleGAN2Discriminator(nn.Module):
+    def __init__(self, size, 
+                 channel_multiplier=2, 
+                 blur_kernel=[1, 3, 3, 1],
+                 channels = {
+                         4: 512,
+                         8: 512,
+                         16: 512,
+                         32: 512,
+                         64: 256 * channel_multiplier,
+                         128: 128 * channel_multiplier,
+                         256: 64 * channel_multiplier,
+                         512: 32 * channel_multiplier,
+                         1024: 16 * channel_multiplier,
+                     }):
+        super().__init__()
+
+        convs = [stylegan2.ConvLayer(3, channels[size], 1)]
+
+        log_size = int(math.log(size, 2))
+
+        in_channel = channels[size]
+
+        for i in range(log_size, 2, -1):
+            out_channel = channels[2 ** (i - 1)]
+
+            convs.append(stylegan2.ResBlock(in_channel, out_channel, blur_kernel))
+
+            in_channel = out_channel
+
+        self.convs = nn.Sequential(*convs)
+
+        self.stddev_group = 4
+        self.stddev_feat = 1
+
+        self.final_conv = ConvLayer(in_channel + 1, channels[4], 3)
+        self.final_linear = nn.Sequential(
+            stylegan2.EqualLinear(channels[4] * 4 * 4, channels[4], activation='fused_lrelu'),
+            stylegan2.EqualLinear(channels[4], 1),
+        )
+
+    def forward(self, input):
+        out = self.convs(input)
+
+        batch, channel, height, width = out.shape
+        group = min(batch, self.stddev_group)
+        stddev = out.view(
+            group, -1, self.stddev_feat, channel // self.stddev_feat, height, width
+        )
+        stddev = torch.sqrt(stddev.var(0, unbiased=False) + 1e-8)
+        stddev = stddev.mean([2, 3, 4], keepdims=True).squeeze(2)
+        stddev = stddev.repeat(group, 1, height, width)
+        out = torch.cat([out, stddev], 1)
+
+        out = self.final_conv(out)
+
+        out = out.view(batch, -1)
+        out = self.final_linear(out)
+
+        return out
+
 
 # ------------------------------------------------------------------------------------------------------------------
 # Feature Projection for GAN Contrastive Learning using Patches from same image
@@ -1581,67 +1677,7 @@ class Discriminator(nn.Module):
         
     def forward(self, x):
         return self.disc(x)
-    
 
-class StyleGAN2Discriminator(nn.Module):
-    def __init__(self, size, channel_multiplier=2, blur_kernel=[1, 3, 3, 1]):
-        super().__init__()
-
-        channels = {
-            4: 512,
-            8: 512,
-            16: 512,
-            32: 512,
-            64: 256 * channel_multiplier,
-            128: 128 * channel_multiplier,
-            256: 64 * channel_multiplier,
-            512: 32 * channel_multiplier,
-            1024: 16 * channel_multiplier,
-        }
-
-        convs = [ConvLayer(3, channels[size], 1)]
-
-        log_size = int(math.log(size, 2))
-
-        in_channel = channels[size]
-
-        for i in range(log_size, 2, -1):
-            out_channel = channels[2 ** (i - 1)]
-
-            convs.append(ResBlock(in_channel, out_channel, blur_kernel))
-
-            in_channel = out_channel
-
-        self.convs = nn.Sequential(*convs)
-
-        self.stddev_group = 4
-        self.stddev_feat = 1
-
-        self.final_conv = ConvLayer(in_channel + 1, channels[4], 3)
-        self.final_linear = nn.Sequential(
-            EqualLinear(channels[4] * 4 * 4, channels[4], activation='fused_lrelu'),
-            EqualLinear(channels[4], 1),
-        )
-
-    def forward(self, input):
-        out = self.convs(input)
-
-        batch, channel, height, width = out.shape
-        group = min(batch, self.stddev_group)
-        stddev = out.view(
-            group, -1, self.stddev_feat, channel // self.stddev_feat, height, width
-        )
-        stddev = torch.sqrt(stddev.var(0, unbiased=False) + 1e-8)
-        stddev = stddev.mean([2, 3, 4], keepdims=True).squeeze(2)
-        stddev = stddev.repeat(group, 1, height, width)
-        out = torch.cat([out, stddev], 1)
-
-        out = self.final_conv(out)
-
-        out = out.view(batch, -1)
-        out = self.final_linear(out)
-
-        return out
 ####################################################################################################################
 ############## E N C O D E R #############--------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------------------------------------
