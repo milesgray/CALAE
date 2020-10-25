@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import spectral_norm, remove_spectral_norm
 import torch.distributions as D
- from torch.autograd import Function
+from torch.autograd import Function
 from torch.nn import functional as F
 
 import numpy as np
