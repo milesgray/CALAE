@@ -163,7 +163,7 @@ class ExplicitAddCoords(nn.Module):
 
 
 class ExplicitCoordConv(nn.Module):
-    def __init__(self, in_channels, out_channels, box_coords, with_r=False, **kwargs):
+    def __init__(self, in_channels, out_channels, with_r=False, **kwargs):
         super().__init__()
         self.addcoords = ExplicitAddCoords(with_r=with_r)
         in_size = in_channels+2

@@ -8,6 +8,7 @@ class ColorVectLoss(nn.Module):
 
     def forward(self, x, y):
         try:
+            x.to(y.device)
             diff_vectors = []
             for i in [0,1,2]:
                 mean_diff = torch.abs(x[:,i,...].mean() - y[:,i,...].mean())
@@ -20,7 +21,7 @@ class ColorVectLoss(nn.Module):
                 
                 diff_vectors.append(torch.stack([mean_diff, std_diff, var_diff, cos_diff, sin_diff]))
             color_vect = torch.stack(diff_vectors)
-            dist = torch.nn.PairwiseDistance()(color_vect, torch.zeros_like(color_vect))
+            dist = torch.nn.HingeEmbeddingLoss()(color_vect, -torch.ones_like(color_vect))
             return dist.mean()
         except:
             r = torch.square(x[:,0,...].mean() - y[:,0,...].mean())
