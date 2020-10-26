@@ -91,17 +91,17 @@ def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
     if loss_fn:
         if use_perceptual:
             scale = fake.shape[2]
-            p_func = perceptual_loss[scale if scale < 32 else 32]
+            p_func = perceptual_loss[scale] if scale < 32 else lpips.LPIPS(fake.device)
             loss = loss_fn(p_func(fake), p_func(real))
         else:
             loss = loss_fn(fake, real)
     else:
         loss = 0       
     if use_ssim:
-        s_loss = ssim_loss(fake, real)
+        s_loss = ssim_loss(fake, real) * ssim_weight
         if use_ssim_tv:
-            s_loss = s_loss / total_variation(fake)
-        loss *= s_loss * ssim_weight
+            s_loss = s_loss / total_variation(fake)        
+        loss *= s_loss
     if use_sobel:
         sobel_real = sobel(real)
         sobel_fake = sobel(fake)
