@@ -1,3 +1,4 @@
+import math
 from math import log2, exp
 import numpy as np
 import torch
@@ -45,9 +46,7 @@ def loss_discriminator(E, D, alpha, real_samples, fake_samples, gamma=10, use_bc
 
     return loss
 
-def loss_discriminator_patch(D, real_samples, fake_samples, gamma=10, use_bce=False,
-                       enable_hessian_real=False, enable_hessian_fake=False, 
-                       hessian_layers_fake=[-2], hessian_layers_real=[-2]):
+def loss_discriminator_img(D, real_samples, fake_samples, gamma=10, use_bce=False):
     real_prediction = D(real_samples)
     fake_prediction = D(fake_samples)
 
