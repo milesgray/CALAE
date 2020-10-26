@@ -12,7 +12,7 @@ from skimage import color
 from IPython import embed
 from . import pretrained_networks as pn
 
-import CALAE.loss.lpips as util
+import CALAE.loss.custom_lpips as util
 
 
 def spatial_average(in_tens, keepdim=True):

@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from PIL import Image
 from matplotlib import pyplot as plt
-from CALAE.loss.lpips import PerceptualLoss
+import lpips
 
 class LPIPS:
     '''
@@ -15,7 +15,7 @@ class LPIPS:
     def __init__(self, cuda, des="Learned Perceptual Image Patch Similarity", version="0.1"):
         self.des = des
         self.version = version
-        self.model = PerceptualLoss(model='net-lin',net='alex',use_gpu=cuda)
+        self.model = lpips.PerceptualLoss(model='net-lin',net='alex',use_gpu=cuda)
 
     def __repr__(self):
         return "LPIPS"
