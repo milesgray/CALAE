@@ -1183,20 +1183,19 @@ class PatchDiscriminator(NLayerDiscriminator):
 class StyleGAN2Discriminator(nn.Module):
     def __init__(self, size, 
                  channel_multiplier=2, 
-                 blur_kernel=[1, 3, 3, 1],
-                 channels = {
-                         4: 512,
-                         8: 512,
-                         16: 512,
-                         32: 512,
-                         64: 256 * channel_multiplier,
-                         128: 128 * channel_multiplier,
-                         256: 64 * channel_multiplier,
-                         512: 32 * channel_multiplier,
-                         1024: 16 * channel_multiplier,
-                     }):
+                 blur_kernel=[1, 3, 3, 1]):
         super().__init__()
-
+        channels = {
+                    4: 512,
+                    8: 512,
+                    16: 512,
+                    32: 512,
+                    64: 256 * channel_multiplier,
+                    128: 128 * channel_multiplier,
+                    256: 64 * channel_multiplier,
+                    512: 32 * channel_multiplier,
+                    1024: 16 * channel_multiplier,
+                }
         convs = [stylegan2.ConvLayer(3, channels[size], 1)]
 
         log_size = int(math.log(size, 2))
