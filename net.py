@@ -978,7 +978,7 @@ class ToRGB(nn.Module):
         x = self.to_rgb(x)
         if self.use_bias:
             x = x + self.bias
-        return x
+        return torch.tanh(x)
 # ------------------------------------------------------------------------------------------------------------------
 # Projection from Feature Space to RGB Space from StyleGAN2, also considers a style context
 # Outputs an image with values scaled to [-1, 1]
