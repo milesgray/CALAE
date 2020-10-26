@@ -394,7 +394,7 @@ def ssim_yuv_loss(x, y):
     return loss
 
 def msssim_loss(x, y):
-    loss = 1 - msssim(x, y)
+    loss = 1 - ms_ssim(x, y)
     loss = loss / 2
     return loss
 

@@ -6,6 +6,9 @@ from tqdm import tqdm, trange
 
 from ..utils.wt import *
 
+
+
+
 # Train function for UNet 128 (64->128) without data augmentation
 def train_unet128(epoch, state_dict, model, optimizer, train_loader, valid_loader, args, logger):
     model.train()
