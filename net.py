@@ -979,22 +979,22 @@ class ToRGB(nn.Module):
 # Projection from Feature Space to RGB Space from StyleGAN2, also considers a style context
 # Outputs an image with values scaled to [-1, 1]
 # ------------------------------------------------------------------------------------------------------------------
-class ToRGB(nn.Module):
+class ToRGB_StyleGAN2(nn.Module):
     def __init__(self, in_channel, style_dim, upsample=True, blur_kernel=[1, 3, 3, 1]):
         super().__init__()
-
+        self.upsample = upsample
         if upsample:
-            self.upsample = stylegan2.Upsample(blur_kernel)
+            self.upsampler = stylegan2.Upsample(blur_kernel)
 
         self.conv = stylegan2.ModulatedConv2d(in_channel, 3, 1, style_dim, demodulate=False)
         self.bias = nn.Parameter(torch.zeros(1, 3, 1, 1))
 
-    def forward(self, input, style, skip=None):
+    def forward(self, input, style, skip=None, upsample=False):
         out = self.conv(input, style)
         out = out + self.bias
 
-        if skip is not None:
-            skip = self.upsample(skip)
+        if skip is not None:            
+            skip = self.upsampler(skip)
 
             out = out + skip
 
@@ -1954,7 +1954,7 @@ class UNetStyle(nn.Module):
             else: 
                 E_out = E_x[-1]
                 norm = torch.cat(E_out, norm, dim=1)
-                return self.generator.toRGB[0](norm, upsample=False)
+                return self.generator.toRGB[0](norm, upsample=True)
 
         # If scale >= 8
         activations_2x = []
@@ -1972,7 +1972,7 @@ class UNetStyle(nn.Module):
             if index in [n_blocks-2, n_blocks-1]:
                 activations_2x.append(inp)
         
-        inp = self.generator.toRGB[n_blocks-1](activations_2x[1], upsample=False)
+        inp = self.generator.toRGB[n_blocks-1](activations_2x[1], upsample=True)
         
         if alpha < 1: # In case if blending is applied            
             inp = (1 - alpha) * self.generator.toRGB[n_blocks-2](activations_2x[0], upsample=True) + alpha * inp
