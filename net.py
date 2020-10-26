@@ -1,3 +1,8 @@
+import random
+import functools
+import math
+from math import log2, ceil
+
 import torch
 import torch.nn as nn
 from torch.nn.utils import spectral_norm, remove_spectral_norm
@@ -10,10 +15,6 @@ from typing import List, Callable, Union, Any, TypeVar, Tuple
 # from torch import tensor as Tensor
 
 Tensor = TypeVar('torch.tensor')
-
-import random
-import functools
-from math import log2, ceil
 
 #from models.unet_generator import *
 from models import stylegan2
