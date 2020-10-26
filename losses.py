@@ -909,7 +909,7 @@ class DiceDissimilarityLoss(nn.Module):
         self.eps = eps
 
     def forward(self, true, logits):
-         """Computes the Sørensen–Dice loss.
+        """Computes the Sørensen–Dice loss.
         Since we want to encourage dissimilarity,
         we will return the raw dive loss, which should be 
         maximized for similarity (and we are minimizing)
