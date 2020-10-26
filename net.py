@@ -5,6 +5,7 @@ from math import log2, ceil
 
 import torch
 import torch.nn as nn
+from torch.nn import init
 from torch.nn.utils import spectral_norm, remove_spectral_norm
 import torch.distributions as D
 from torch.autograd import Function
@@ -25,6 +26,9 @@ import losses
 from layers.activations import Mish
 from layers.attention import UNetAttention, SelfAttention, TripletAttention
 from layers.spectralnorm import SNConv2d, SNLinear
+
+import lpips
+import piq
 
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -1247,11 +1251,11 @@ class StyleGAN2Discriminator(nn.Module):
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L535
 # ------------------------------------------------------------------------------------------------------------------
 class PatchSampleFeatureProjection(nn.Module):
-    def __init__(self, scale, use_perceptual=False, use_mlp=False, 
-                 init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
+    def __init__(self, scale, patch_size, use_perceptual=False, use_mlp=False, init_type='normal', init_gain=0.02, nc=256, gpu_ids=[]):
         # potential issues: currently, we use the same patch_ids for multiple images in the batch
         super().__init__()
         self.scale = scale
+        self.patch_size = patch_size
         self.l2norm = Normalize(2)
         self.use_mlp = use_mlp        
         self.nc = nc  # hard-coded
@@ -1267,7 +1271,7 @@ class PatchSampleFeatureProjection(nn.Module):
             32: 22
         }
         if self.use_percept:
-            self.percept = PerceptualLoss(ilayer=percep_layer_lookup[scale if scale < 32 else 32])
+            self.percept = PerceptualLoss(ilayer=percep_layer_lookup[scale])
 
     def create_mlp(self, feats):
         for mlp_id, feat in enumerate(feats):
@@ -1284,21 +1288,36 @@ class PatchSampleFeatureProjection(nn.Module):
         if self.use_mlp and not self.mlp_init:
             self.create_mlp(feats)
         for feat_id, feat in enumerate(feats):
-            B, H, W = feat.shape[0], feat.shape[2], feat.shape[3]
-            feat_reshape = feat.permute(0, 2, 3, 1).flatten(1, 2)
-            if num_patches > 0:
-                if patch_ids is not None:
-                    patch_id = patch_ids[feat_id]
+            if self.use_percept:
+                C, H, W = feat.size(0), feat.size(1), feat.size(2)
+                size = self.patch_size
+                Y = H // size
+                X = W // size
+                feat = feat.view(C, Y, size, X, size)
+                feat_reshape = feat.permute(1, 3, 0, 2, 4).contiguous().view(Y * X, C, size, size)
+                if num_patches > 0:
+                    if patch_ids is not None:
+                        patch_id = patch_ids[feat_id]
+                    else:
+                        patch_id = torch.randperm(feat_reshape.shape[0], device=feats[0].device)
+                        patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]
+                    x_sample = self.percept(feat_reshape[patch_id, ...])
                 else:
-                    patch_id = torch.randperm(feat_reshape.shape[1], device=feats[0].device)
-                    patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]  # .to(patch_ids.device)
-                if self.use_percept:
-                    x_sample = self.percept(x_sample[:, patch_id, :])
-                else:
-                    x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
+                    x_sample = feat_reshape
+                    patch_id = [range(feat_reshape.shape[0])]
             else:
-                x_sample = feat_reshape
-                patch_id = []
+                B, H, W = feat.shape[0], feat.shape[2], feat.shape[3]
+                feat_reshape = feat.permute(0, 2, 3, 1).flatten(1, 2)
+                if num_patches > 0:
+                    if patch_ids is not None:
+                        patch_id = patch_ids[feat_id]
+                    else:
+                        patch_id = torch.randperm(feat_reshape.shape[1], device=feats[0].device)
+                        patch_id = patch_id[:int(min(num_patches, patch_id.shape[0]))]  # .to(patch_ids.device)
+                    x_sample = feat_reshape[:, patch_id, :].flatten(0, 1)  # reshape(-1, x.shape[1])
+                else:
+                    x_sample = feat_reshape
+                    patch_id = []
             if self.use_mlp:
                 mlp = getattr(self, 'mlp_%d' % feat_id)
                 x_sample = mlp(x_sample)
@@ -1309,6 +1328,7 @@ class PatchSampleFeatureProjection(nn.Module):
                 x_sample = x_sample.permute(0, 2, 1).reshape([B, x_sample.shape[-1], H, W])
             return_feats.append(x_sample)
         return return_feats, return_ids
+
 
 # ------------------------------------------------------------------------------------------------------------------
 # Encoder for GAN Contrastive Learning using Patches from same image
