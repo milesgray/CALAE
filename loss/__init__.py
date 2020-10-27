@@ -1,6 +1,8 @@
 import torch
 from torch import Tensor
 
+from IQA import *
+from loss_provider import LossProvider
 
 def euclidean_distance(tensor_1: Tensor, tensor_2: Tensor, mask: Tensor = None) -> Tensor:
     difference = tensor_1 - tensor_2
