@@ -1,4 +1,4 @@
-from .psnr import PSNR
+from .psnr import PSNR, PSNRBinary
 from .ssim import SSIM
 from .ms_ssim import MS_SSIM
 from .cw_ssim import CW_SSIM
