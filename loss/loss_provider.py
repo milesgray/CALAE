@@ -12,7 +12,7 @@ from .watson_vgg import WatsonDistanceVgg
 #from .robust_loss import RobustLoss
 from .deep_loss import PNetLin
 from .IQA import SSIM
-from .psnr import PSNR
+from .IQA import PSNR
 from .perceptual_style_loss import PerceptualAndStyleLoss
 from .IQA import CW_SSIM
 from .IQA import FSIM
