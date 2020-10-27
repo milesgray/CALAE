@@ -5,7 +5,7 @@ from torch.nn import functional as F
 import numpy as np
 from torchvision import transforms
 from .utils import fspecial_gauss
-from .SteerPyrUtils import sp5_filters
+from .steer_pyr_utils import sp5_filters
 
 def corrDn(image, filt, step=1, channels=1):
 

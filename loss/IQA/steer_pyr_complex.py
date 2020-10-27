@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .SteerPyrUtils import *  
+from .steer_pyr_utils import *  
 
 
 class SteerablePyramid(nn.Module):
