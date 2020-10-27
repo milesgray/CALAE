@@ -9,12 +9,21 @@ from .shift_wrapper import ShiftWrapper
 from .watson import WatsonDistance
 from .watson_fft import WatsonDistanceFft
 from .watson_vgg import WatsonDistanceVgg
-from .robust_loss import RobustLoss
+#from .robust_loss import RobustLoss
 from .deep_loss import PNetLin
 from .ssim import SSIM
 from .psnr import PSNR
 from .perceptual_style_loss import PerceptualAndStyleLoss
-
+from .IQA import CW_SSIM
+from .IQA import FSIM
+from .IQA import DISTS
+from .IQA import GMSD
+from .IQA import MAD
+from .IQA import MS_SSIM
+from .IQA import NLPD
+from .IQA import VIF
+from .IQA import VIFs
+from .IQA import VSI
 
 class LossProvider():
     def __init__(self, max_color_value=1):
@@ -30,7 +39,12 @@ class LossProvider():
         path = Path(current_dir) / 'weights' / filename
         return torch.load(path, map_location='cpu')
     
-    def get_loss_function(self, model, colorspace='RGB', reduction='sum', deterministic=False, pretrained=True, image_size=None):
+    def get_loss_function(self, model, 
+                          colorspace='RGB', 
+                          reduction='sum', 
+                          deterministic=False, 
+                          pretrained=True, 
+                          image_size=None):
         """
         returns a trained loss class.
         model: one of the values returned by self.loss_functions
@@ -40,7 +54,6 @@ class LossProvider():
         """
         is_greyscale = colorspace in ['grey', 'Grey', 'LA', 'greyscale', 'grey-scale']
         
-
         if model.lower() in ['l2']:
             loss = nn.MSELoss(reduction=reduction)
         elif model.lower() in ['l1']:
@@ -112,18 +125,18 @@ class LossProvider():
                 loss = PNetLin(pnet_type='squeeze', reduction=reduction, use_dropout=False)
                 if pretrained: 
                     loss.load_state_dict(self.load_state_dict('rgb_pnet_lin_squeeze_trial0.pth'))
-        elif model.lower() in ['adaptive']:
-            def map_weights(states):
-                return OrderedDict([(k[1:], v) for k, v in states.items()])
-            assert image_size is not None, 'Adaptive loss requires image size input'
-            if is_greyscale:
-                loss = GreyscaleWrapper(RobustLoss, (), {'image_size':image_size, 'use_gpu':False, 'trainable':False, 'reduction':reduction})
-                if pretrained: 
-                    loss.loss.load_state_dict(map_weights(self.load_state_dict('gray_adaptive_trial0.pth')))
-            else:
-                loss = RobustLoss(image_size=image_size, use_gpu=False, trainable=False, reduction=reduction)
-                if pretrained: 
-                    loss.load_state_dict(map_weights(self.load_state_dict('rgb_adaptive_trial0.pth')))
+        #elif model.lower() in ['adaptive']:
+        #    def map_weights(states):
+        #        return OrderedDict([(k[1:], v) for k, v in states.items()])
+        #    assert image_size is not None, 'Adaptive loss requires image size input'
+        #    if is_greyscale:
+        #        loss = GreyscaleWrapper(RobustLoss, (), {'image_size':image_size, 'use_gpu':False, 'trainable':False, 'reduction':reduction})
+        #        if pretrained: 
+        #            loss.loss.load_state_dict(map_weights(self.load_state_dict('gray_adaptive_trial0.pth')))
+        #    else:
+        #        loss = RobustLoss(image_size=image_size, use_gpu=False, trainable=False, reduction=reduction)
+        #        if pretrained: 
+        #            loss.load_state_dict(map_weights(self.load_state_dict('rgb_adaptive_trial0.pth')))
         elif model.lower() in ['percept-style']:
             if is_greyscale:
                 loss = GreyscaleWrapper(PerceptualAndStyleLoss, (), {'use_perceptual_loss': True, 'use_style_loss': True})
@@ -134,6 +147,24 @@ class LossProvider():
                 loss = GreyscaleWrapper(PSNR, (), {'max_value': self.max_color_value})
             else:
                 loss = PSNR(max_value=self.max_color_value)
+        elif model.lower() in ['dists']:
+            if is_greyscale:
+                loss = GreyscaleWrapper(DISTS, (), {})
+            else:
+                loss = DISTS()
+        elif model.lower() in ['gmsd']:
+            if is_greyscale:
+                loss = GreyscaleWrapper(GMSD, (), {})
+            else:
+                loss = GMSD()
+        elif model.lower() in ['cw_ssim']:
+            assert image_size is not None, "CW_SSIM requires an image size to be set"
+            if not isinstance(image_size, tuple):
+                image_size = (image_size, image_size)
+            if is_greyscale:                
+                loss = GreyscaleWrapper(CW_SSIM, (), {'imgSize': image_size})
+            else:
+                loss = CW_SSIM(imgSize=image_size)
         else:
             raise Exception('Metric "{}" not implemented'.format(model))
 
