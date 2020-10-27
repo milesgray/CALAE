@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 from torchvision import transforms
 from .utils import fspecial_gauss
-from .SSIM import ssim
+from .ssim import ssim
 
 def ms_ssim(X, Y, win):
     if not X.shape == Y.shape:

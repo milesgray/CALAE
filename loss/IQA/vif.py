@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import numpy as np
 from torchvision import transforms
 from .utils import fspecial_gauss
-from .SteerPyrSpace import SteerablePyramidSpace
+from .steer_pyr_space import SteerablePyramidSpace
 import math
 
   

@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-import lpips
 
 eps = 1e-6
 
