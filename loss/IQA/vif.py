@@ -12,7 +12,6 @@ class VIF(torch.nn.Module):
     # Refer to https://live.ece.utexas.edu/research/Quality/VIF.htm
 
     def __init__(self, channels=3, level=4, ori=6, device = torch.device("cuda")):
-
         super(VIF, self).__init__()
         self.ori = ori-1
         self.level = level
@@ -23,7 +22,6 @@ class VIF(torch.nn.Module):
         self.tol = 1e-12
 
     def corrDn(self, image, filt, step=1, channels=1,start=[0,0],end=[0,0]):
-
         filt_ = torch.from_numpy(filt).float().unsqueeze(0).unsqueeze(0).repeat(channels,1,1,1).to(image.device)
         p = (filt_.shape[2]-1)//2
         image = F.pad(image, (p,p,p,p),'reflect')
@@ -32,7 +30,6 @@ class VIF(torch.nn.Module):
         return img
         
     def vifsub_est_M(self, org, dist):
-        
         g_all = []
         vv_all = []
         for i in range(len(self.subbands)):

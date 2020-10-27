@@ -10,6 +10,13 @@ class PSNR(nn.Module):
         self.max_value = max_value
 
     def forward(self, image_1: torch.Tensor, image_2: torch.Tensor) -> torch.Tensor:
+        """ Peak Signal to Noise Ratio
+        args:
+            image_1 : 4-d ndarray in [batch_size, channels, img_rows, img_cols]
+            image_2 : 4-d ndarray in [batch_size, channels, img_rows, img_cols]
+            threshold : [0.0, 1.0]
+        return PSNR, larger the better
+        """
         assert image_1.shape == image_2.shape, "For a meaningful PSNR calculation, the shape of image_1 and image_2 should be the same"
 
         if len(image_1.shape) == 4:
