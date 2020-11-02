@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 def euclidean_loss(X, mu_tilde):
     """
     Computes the Euclidean loss.
@@ -13,8 +14,9 @@ def euclidean_loss(X, mu_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    return torch.sqrt(torch.sum((X-mu_tilde)**2, axis=1))
+
+    return torch.sqrt(torch.sum((X - mu_tilde) ** 2, axis=1))
+
 
 def cosine_loss(X, mu_tilde):
     """
@@ -28,10 +30,11 @@ def cosine_loss(X, mu_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
+
     X_norm = torch.nn.l2_normalize(X, axis=1)
     mu_tilde_norm = torch.nn.l2_normalize(mu_tilde, axis=1)
-    return 1-torch.sum(X_norm*mu_tilde_norm, axis=1)
+    return 1 - torch.sum(X_norm * mu_tilde_norm, axis=1)
+
 
 def correlation_loss(X, mu_tilde):
     """
@@ -45,10 +48,11 @@ def correlation_loss(X, mu_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    centered_X = X-torch.reshape(torch.mean(X, axis=0),(1, -1))
-    centered_mu_tilde = mu_tilde-torch.reshape(torch.mean(mu_tilde, axis=1), (-1,1))
+
+    centered_X = X - torch.reshape(torch.mean(X, axis=0), (1, -1))
+    centered_mu_tilde = mu_tilde - torch.reshape(torch.mean(mu_tilde, axis=1), (-1, 1))
     return cosine_loss(centered_X, centered_mu_tilde)
+
 
 def manhattan_loss(X, mu_tilde):
     """
@@ -62,8 +66,9 @@ def manhattan_loss(X, mu_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    return torch.sum(torch.abs(X-mu_tilde), axis=1)
+
+    return torch.sum(torch.abs(X - mu_tilde), axis=1)
+
 
 def minkowsky_loss(X, mu_tilde, p):
     """
@@ -79,8 +84,9 @@ def minkowsky_loss(X, mu_tilde, p):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    return torch.sum(torch.abs(X-mu_tilde)**p, axis=1)**(1/p)
+
+    return torch.sum(torch.abs(X - mu_tilde) ** p, axis=1) ** (1 / p)
+
 
 def chebyshev_loss(X, mu_tilde):
     """
@@ -94,8 +100,9 @@ def chebyshev_loss(X, mu_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    return torch.max(torch.abs(X-mu_tilde), axis=1)
+
+    return torch.max(torch.abs(X - mu_tilde), axis=1)
+
 
 def mahalanobis_loss(X, mu_tilde, Cov_tilde):
     """
@@ -111,9 +118,14 @@ def mahalanobis_loss(X, mu_tilde, Cov_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
-    diff = torch.unsqueeze(X-mu_tilde, axis=1)
-    return torch.squeeze(torch.matmul(torch.matmul(diff, Cov_tilde), torch.transpose(diff, perm = [0, 2, 1])))
+
+    diff = torch.unsqueeze(X - mu_tilde, axis=1)
+    return torch.squeeze(
+        torch.matmul(
+            torch.matmul(diff, Cov_tilde), torch.transpose(diff, perm=[0, 2, 1])
+        )
+    )
+
 
 def mahalanobis_loss_decomp(X, mu_tilde, Cov_tilde):
     """
@@ -129,26 +141,30 @@ def mahalanobis_loss_decomp(X, mu_tilde, Cov_tilde):
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    
+
     cov = torch.matmul(Cov_tilde, torch.transpose(Cov_tilde, [0, 2, 1]))
-    diff = torch.unsqueeze(X-mu_tilde, axis=1)
-    return torch.squeeze(torch.matmul(torch.matmul(diff, cov), torch.transpose(diff, perm = [0, 2, 1])))
+    diff = torch.unsqueeze(X - mu_tilde, axis=1)
+    return torch.squeeze(
+        torch.matmul(torch.matmul(diff, cov), torch.transpose(diff, perm=[0, 2, 1]))
+    )
+
 
 def geocross_loss(x):
     """
     Computes the geodesic distance on sphere to sum pairwise distances
     Arguments:
         X: array-like, shape=(batch_size, n_features)
-            Input batch matrix.        
+            Input batch matrix.
     Returns:
         loss: array-like, shape=(batch_size, )
             Computed loss for each sample.
     """
-    if X.shape[1] == 1: return 0
+    if X.shape[1] == 1:
+        return 0
     X = x.view(-1, 1, x.shape[1], x.shape[2])
     Y = x.view(-1, x.shape[1], 1, x.shape[2])
-    A = ((X-Y).pow(2).sum(-1)+1e-9).sqrt()
-    B = ((X+Y).pow(2).sum(-1)+1e-9).sqrt()
-    D = 2*torch.atan2(A, B)
-    D = ((D.pow(2)*512).mean((1, 2))/8.).sum()
+    A = ((X - Y).pow(2).sum(-1) + 1e-9).sqrt()
+    B = ((X + Y).pow(2).sum(-1) + 1e-9).sqrt()
+    D = 2 * torch.atan2(A, B)
+    D = ((D.pow(2) * 512).mean((1, 2)) / 8.0).sum()
     return D

@@ -24,13 +24,21 @@ from .IQA import NLPD
 from .IQA import VIF
 from .IQA import VIFs
 from .IQA import VSI
+from .structure_contrast import StructureContrastLoss
 
 class LossProvider():
     def __init__(self, max_color_value=1):
+        """Factory for creating Pytorch loss functions for image quality related problems.
+
+        Args:
+            max_color_value (int, optional): Max value that image pixel values are
+                scaled to, usually either 1 or 255. Defaults to 1.        
+        """
         self.loss_functions = ['L1', 'L2', 'SSIM', 'Watson-dct', 
                                'Watson-fft', 'Watson-vgg', 
                                'Deeploss-vgg', 'Deeploss-squeeze', 
-                               'Adaptive', 'percept-style', 'psnr']
+                               'Adaptive', 'percept-style', 'psnr',
+                               'dists', 'gmsd', 'cw_ssim', 'struct_contrast']
         self.color_models = ['LA', 'RGB']
         self.max_color_value = max_color_value
 
@@ -45,12 +53,16 @@ class LossProvider():
                           deterministic=False, 
                           pretrained=True, 
                           image_size=None):
-        """
-        returns a trained loss class.
-        model: one of the values returned by self.loss_functions
-        colorspace: 'LA' or 'RGB'
-        deterministic: bool, if false (default) uses shifting of image blocks for watson-fft
-        image_size: tuple, size of input images. Only required for adaptive loss. Eg: [3, 64, 64]
+        """ Returns a loss class and loads trained weights if needed.
+
+        Args:
+            model: one of the values returned by self.loss_functions
+            colorspace (str, optionals): 'LA' or 'RGB'. Defaults to 'RGB'.
+            reduction (str, optional): Type of aggregation done to output of loss,
+                not always applied. Defaults to 'sum'.
+            deterministic (bool, optional): if false uses shifting of 
+                image blocks for watson-fft. Defaults to False.
+            image_size (tuple, optional): tuple, size of input images. Only required for adaptive loss. Eg: [3, 64, 64]
         """
         is_greyscale = colorspace in ['grey', 'Grey', 'LA', 'greyscale', 'grey-scale']
         
@@ -156,7 +168,7 @@ class LossProvider():
             if is_greyscale:
                 loss = GreyscaleWrapper(GMSD, (), {})
             else:
-                loss = GMSD()
+                loss = GMSD()            
         elif model.lower() in ['cw_ssim']:
             assert image_size is not None, "CW_SSIM requires an image size to be set"
             if not isinstance(image_size, tuple):
@@ -165,6 +177,11 @@ class LossProvider():
                 loss = GreyscaleWrapper(CW_SSIM, (), {'imgSize': image_size})
             else:
                 loss = CW_SSIM(imgSize=image_size)
+        elif model.lower() in ['struct_contrast']:
+            if is_greyscale:
+                loss = GreyscaleWrapper(StructureContrastLoss, (), {})
+            else:
+                loss = StructureContrastLoss()
         else:
             raise Exception('Metric "{}" not implemented'.format(model))
 

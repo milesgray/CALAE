@@ -27,12 +27,12 @@ class ABLoss(nn.Module):
                 (source - self.margin) ** 2 * ((source <= self.margin) & (target > 0)).float())
         return torch.abs(loss).sum()
 
-class Attention(nn.Module):
+class KDAttention(nn.Module):
     """Paying More Attention to Attention: Improving the Performance of Convolutional Neural Networks
     via Attention Transfer
     code: https://github.com/szagoruyko/attention-transfer"""
     def __init__(self, p=2):
-        super(Attention, self).__init__()
+        super(KDAttention, self).__init__()
         self.p = p
 
     def forward(self, g_s, g_t):
@@ -51,10 +51,10 @@ class Attention(nn.Module):
     def at(self, f):
         return F.normalize(f.pow(self.p).mean(1).view(f.size(0), -1))
 
-class Correlation(nn.Module):
+class CorrelationCongruence(nn.Module):
     """Correlation Congruence for Knowledge Distillation, ICCV 2019."""
     def __init__(self):
-        super(Correlation, self).__init__()
+        super(CorrelationCongruence, self).__init__()
 
     def forward(self, f_s, f_t):
         delta = torch.abs(f_s - f_t)
@@ -169,7 +169,6 @@ class KDSVD(nn.Module):
         v_tb = None
         losses = []
         for i, f_s, f_t in zip(range(len(g_s)), g_s, g_t):
-
             u_t, s_t, v_t = self.svd(f_t, self.k)
             u_s, s_s, v_s = self.svd(f_s, self.k + 3)
             v_s, v_t = self.align_rsv(v_s, v_t)
@@ -365,7 +364,7 @@ class RKDLoss(nn.Module):
 class RKDLoss(nn.Module):
     """Relational Knowledge Disitllation, CVPR2019"""
     def __init__(self, w_d=25, w_a=50):
-        super(RKDLoss, self).__init__()
+        super().__init__()
         self.w_d = w_d
         self.w_a = w_a
 
