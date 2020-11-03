@@ -1426,7 +1426,7 @@ class EncoderBlock(nn.Module):
 class GeneratorBlock(nn.Module):
     def __init__(self, inp_c, oup_c, code, initial=False, blur_upsample=True, 
                  fused_scale=True, learn_blur=True, learn_residual=False, 
-                 learn_style=False, learn_noise=False,
+                 learn_style=False, learn_noise=False, use_attn=True,
                  scale=4, act="leaky", norm="pixel"):
         super().__init__()
                 
@@ -1479,6 +1479,9 @@ class GeneratorBlock(nn.Module):
         
         self.upsample = Upsample(inp_c) # nn.UpsamplingBilinear2d(scale_factor=2)
         self.blur = Blur(inp_c)
+
+        if use_attn:
+            self.attn = TripletAttention()
         
         if act:
             self.activation = Factory.get_activation(act)        
@@ -1501,7 +1504,7 @@ class GeneratorBlock(nn.Module):
                 x = self.blur_affine(x)
 
             x = self.conv1(x)
-            
+            x = self.attn(x)
             x = self.activation(x)    
             
         x = self.B1(x)
@@ -1842,6 +1845,7 @@ class StyleGenerator(nn.Module):
                  learn_residual=False, 
                  learn_style=False, 
                  learn_noise=False, 
+                 use_attn=True,
                  act="leaky",
                  norm="instance",
                  verbose=False):
@@ -1859,6 +1863,7 @@ class StyleGenerator(nn.Module):
                                     learn_residual=learn_residual,
                                     learn_style=learn_style,
                                     learn_noise=learn_noise,
+                                    use_attn=use_attn,
                                     act=act,
                                     norm=norm,
                                     scale=scale))
