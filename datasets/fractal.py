@@ -401,25 +401,17 @@ class BuildOutput:
         else:
             return data, label
 
-
-###############################################
-## SWAV Style, DirectoryDataset based #######
-###########################################
-class MultiCropV2(object):
-    def __init__(
-        self,
-        crop_sizes,
-        resize_sizes,
-        counts=[5],
-        return_original=False,
-        padding=None,
-        pad_if_needed=False,
-        fill=0,
-        padding_mode="constant",
-        interpolation=Image.BILINEAR,
-    ):
-        if isinstance(crop_sizes, numbers.Number):
-            self.crop_size = [(int(crop_size), int(crop_size))]
+class MultiCropV2(object):   
+    def __init__(self, crop_size, resize_size, 
+                 count=5,
+                 padding=None, 
+                 return_original=False,
+                 pad_if_needed=False, 
+                 fill=0, 
+                 padding_mode='constant', 
+                 interpolation=Image.BILINEAR):
+        if isinstance(crop_size, numbers.Number):
+            self.crop_size = (int(crop_size), int(crop_size))
         else:
             self.crop_size = crop_size
         self.count = count
@@ -430,10 +422,10 @@ class MultiCropV2(object):
         self.return_original = return_original
 
         if isinstance(resize_size, numbers.Number):
-            self.resize_size = [(int(resize_size), int(resize_size))]
+            self.resize_size = (int(resize_size), int(resize_size))
         else:
             self.resize_size = resize_size
-        self.interp = interpolation
+        self.interp = interpolation        
         self.resizecrop = transforms.Resize(self.resize_size, interpolation=self.interp)
 
     @staticmethod
@@ -475,7 +467,8 @@ class MultiCropV2(object):
             return (results, coords)
 
     def _check_size(self, x):
-        """Ensures the image is big enough to"""
+        """ Ensures the image is big enough to 
+        """
         self.h, self.w = _get_image_size(x)
         # if not using padding boundary for valid crop area, then total size is just crop size
         # if use pad is enforced, there is an extra amount of padding that is not valid, so the resulting image is larger
@@ -496,19 +489,17 @@ class MultiCropV2(object):
                 ratio_w = 1
                 ratio_r = total_h / self.w
             # do resize based on if either PIL or Tensor
-            if _is_pil_image(x):
-                x = x.resize(
-                    int(int(self.w * ratio_r) + pad_amount * ratio_w),
-                    int(int(self.h * ratio_r) + pad_amount * ratio_h),
-                )
+            if _is_pil_image(x):                
+                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
+                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
+                            )
                 # get new size
                 self.h, self.w = _get_image_size(x)
                 return x
             elif isinstance(img, torch.Tensor) and img.dim() > 2:
-                x = x.resize(
-                    int(int(self.w * ratio_r) + pad_amount * ratio_w),
-                    int(int(self.h * ratio_r) + pad_amount * ratio_h),
-                )
+                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
+                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
+                            )
                 # get new size
                 self.h, self.w = _get_image_size(x)
                 return x
@@ -520,7 +511,7 @@ class MultiCropV2(object):
             return x
 
     def _random_crop(self, img):
-        """Randomly crops out a square subset of an image.
+        """
         Args:
             img (PIL Image): Image to be cropped.
 
@@ -532,14 +523,10 @@ class MultiCropV2(object):
 
         # pad the width if needed
         if self.pad_if_needed and img.size[0] < self.crop_size[1]:
-            img = F.pad(
-                img, (self.crop_size[1] - img.size[0], 0), self.fill, self.padding_mode
-            )
+            img = F.pad(img, (self.crop_size[1] - img.size[0], 0), self.fill, self.padding_mode)
         # pad the height if needed
         if self.pad_if_needed and img.size[1] < self.crop_size[0]:
-            img = F.pad(
-                img, (0, self.crop_size[0] - img.size[1]), self.fill, self.padding_mode
-            )
+            img = F.pad(img, (0, self.crop_size[0] - img.size[1]), self.fill, self.padding_mode)
 
         i, j, h, w = self.get_params(img, self.crop_size)
 
@@ -551,10 +538,11 @@ class MultiCropV2(object):
         return TF.crop(img, i, j, h, w), (x1, y1, x2, y2, h, w)
 
     def _resize_coord(self, coord):
-        """Scale the coordinates by the amount the crop was resized"""
+        """ Scale the coordinates by the amount the crop was resized
+        """
         ratio_x = self.resize_size[0] / self.crop_size[1]
         ratio_y = self.resize_size[0] / self.crop_size[1]
-
+        
         x1 = int(coord[0] * ratio_x)
         y1 = int(coord[1] * ratio_y)
         x2 = int(coord[2] * ratio_x)
@@ -564,6 +552,10 @@ class MultiCropV2(object):
 
         return (x1, y1, x2, y2, h, w)
 
+
+###############################################
+## SWAV Style, DirectoryDataset based #######
+###########################################
 
 class ContrastiveMultiCropDataset(datasets.ImageFolder):
     def __init__(
