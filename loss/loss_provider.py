@@ -6,11 +6,11 @@ from collections import OrderedDict
 
 from .color_wrapper import ColorWrapper, GreyscaleWrapper
 from .shift_wrapper import ShiftWrapper
-from .watson import WatsonDistance
-from .watson_fft import WatsonDistanceFft
-from .watson_vgg import WatsonDistanceVgg
+from .IQA.watson import WatsonDistance
+from .IQA.watson_fft import WatsonDistanceFft
+from .IQA.watson_vgg import WatsonDistanceVgg
 #from .robust_loss import RobustLoss
-from .deep_loss import PNetLin
+from .IQA.deep_loss import PNetLin
 from .IQA import SSIM
 from .IQA import PSNR
 from .perceptual_style_loss import PerceptualAndStyleLoss
