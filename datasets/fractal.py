@@ -389,8 +389,8 @@ class BuildOutput:
     def __call__(self, x):        
         if self.super_res:
             y = x[2] # coords of crop resized imgs
-            x = x[0] # cropped resized imgs
             z = x[1] # original cropped imgs
+            x = x[0] # cropped resized imgs            
         else:
             y = x[1] # coords of crop resized imgs
             x = x[0] # cropped resized imgs
