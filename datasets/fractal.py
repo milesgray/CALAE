@@ -7,6 +7,22 @@ from torchvision import transforms
 import torchvision.datasets as datasets
 import torchvision.transforms.functional as TF
 from PIL import Image
+try:
+    import accimage
+except ImportError:
+    accimage = None
+
+def _is_pil_image(img):
+    if accimage is not None:
+        return isinstance(img, (Image.Image, accimage.Image))
+    else:
+        return isinstance(img, Image.Image)
+
+def _is_numpy(img):
+    return isinstance(img, np.ndarray)
+
+def _is_numpy_image(img):
+    return img.ndim in {2, 3}
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------
