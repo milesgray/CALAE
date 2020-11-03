@@ -2,6 +2,7 @@ import pathlib
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
+from PIL import Image
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------
