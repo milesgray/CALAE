@@ -91,7 +91,7 @@ def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
     if loss_fn:
         if use_perceptual:
             scale = fake.shape[2]
-            p_func = perceptual_loss[scale] if scale < 32 else lpips.LPIPS(fake.device)
+            p_func = perceptual_loss[scale] if scale < 32 else perceptual_loss[32]
             loss = loss_fn(p_func(fake), p_func(real))
         else:
             loss = loss_fn(fake, real)
