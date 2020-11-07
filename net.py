@@ -1187,11 +1187,11 @@ class PatchDiscriminator(NLayerDiscriminator):
 # 
 # ------------------------------------------------------------------------------------------------------------------
 # 2D Conv layer with spectral norm
-class SNConv2d(nn.Conv2d, SN):
+class SNConv2d(lreq.Conv2d, SN):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True,
                  num_svs=1, num_itrs=1, eps=1e-12):
-        nn.Conv2d.__init__(self, in_channels, out_channels, kernel_size, stride,
+        lreq.Conv2d.__init__(self, in_channels, out_channels, kernel_size, stride,
                            padding, dilation, groups, bias)
         SN.__init__(self, num_svs, num_itrs, out_channels, eps=eps)
 
@@ -1201,10 +1201,10 @@ class SNConv2d(nn.Conv2d, SN):
 
 
 # Linear layer with spectral norm
-class SNLinear(ScaledLinear, SN):
+class SNLinear(lreq.Linear, SN):
     def __init__(self, in_features, out_features, bias=True,
                  num_svs=1, num_itrs=1, eps=1e-12):
-        ScaledLinear.__init__(self, in_features, out_features, bias)
+        lreq.Linear.__init__(self, in_features, out_features, bias)
         SN.__init__(self, num_svs, num_itrs, out_features, eps=eps)
 
     def forward(self, x):
