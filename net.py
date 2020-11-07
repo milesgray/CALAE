@@ -18,14 +18,14 @@ from typing import List, Callable, Union, Any, TypeVar, Tuple
 Tensor = TypeVar('torch.tensor')
 
 #from models.unet_generator import *
-from models import stylegan2
-from metrics.perceptual import PerceptualLoss
-from layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
-from layers import lreq
-import losses
-from layers.activations import Mish
-from layers.attention import UNetAttention, SelfAttention, TripletAttention
-from layers.spectralnorm import SN, SNConv2d, SNLinear
+from CALAE.models import stylegan2
+from CALAE.metrics.perceptual import PerceptualLoss
+from CALAE.layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
+from CALAE.layers import lreq
+import CALAE.losses
+from CALAE.layers.activations import Mish
+from CALAE.layers.attention import UNetAttention, SelfAttention, TripletAttention
+from CALAE.layers.spectralnorm import SN, SNConv2d, SNLinear
 
 import lpips
 import piq
