@@ -25,7 +25,7 @@ from layers import lreq
 import losses
 from layers.activations import Mish
 from layers.attention import UNetAttention, SelfAttention, TripletAttention
-from layers.spectralnorm import SNConv2d, SNLinear
+from layers.spectralnorm import SN, SNConv2d, SNLinear
 
 import lpips
 import piq
@@ -1181,6 +1181,122 @@ class PatchDiscriminator(NLayerDiscriminator):
         return super().forward(x)
 
 
+
+# ------------------------------------------------------------------------------------------------------------------
+# Spectral Norm Discriminator
+# 
+# ------------------------------------------------------------------------------------------------------------------
+# 2D Conv layer with spectral norm
+class SNConv2d(nn.Conv2d, SN):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True,
+                 num_svs=1, num_itrs=1, eps=1e-12):
+        nn.Conv2d.__init__(self, in_channels, out_channels, kernel_size, stride,
+                           padding, dilation, groups, bias)
+        SN.__init__(self, num_svs, num_itrs, out_channels, eps=eps)
+
+    def forward(self, x):
+        return F.conv2d(x, self.W_(), self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
+
+
+# Linear layer with spectral norm
+class SNLinear(ScaledLinear, SN):
+    def __init__(self, in_features, out_features, bias=True,
+                 num_svs=1, num_itrs=1, eps=1e-12):
+        ScaledLinear.__init__(self, in_features, out_features, bias)
+        SN.__init__(self, num_svs, num_itrs, out_features, eps=eps)
+
+    def forward(self, x):
+        return F.linear(x, self.W_(), self.bias)
+
+class SpectralDiscriminator(nn.Module):
+    def __init__(self, code=512, depth=3, norm='layer', act='mish', verbose=False):
+        super().__init__()
+
+        self.norm = norm
+        self.act = act
+        
+        self.disc = []
+        for i in range(depth - 1):
+            if verbose: print(f"[Discriminator]\t Block {i} for {code}d code using norm {norm}, act {act} and a residual skip delay of {skip_delay} (only applies if non zero)")   
+            self.disc.extend(self.build_layer(code))
+        self.disc = self.disc + [SNLinear(code, 1)]
+        self.disc = nn.Sequential(*self.disc)
+
+    def build_layer(self, code):
+        layer = []
+        layer.append(SNLinear(code, code))
+
+        if self.norm:
+            layer.append(Factory.get_normalization(Factory.make_norm_2d(self.norm)))
+        if self.act:
+            layer.append(Factory.get_activation(self.act))  
+            
+        return layer
+        
+    def forward(self, x):
+        return self.disc(x)
+
+       # ------------------------------------------------------------------------------------------------------------------
+# Spectral Norm Feature Projection Network
+# 
+# ------------------------------------------------------------------------------------------------------------------ 
+class SpectralFeatureProjectionNetwork(nn.Module):
+    def __init__(self, code=512, depth=4, norm='none', act='leaky', use_attn=True, skip_delay=0, verbose=False):
+        super().__init__()
+        self.verbose = verbose
+        self.code = code
+        self.act = act
+        self.norm = norm
+        self.use_attn = use_attn
+        
+        self.f = [BallProjection()]
+        for i in range(depth-1):
+            if verbose: print(f"[FeatureProjectionNetwork]\t Block {i} for {code}d code using norm {norm}, act {act} and a residual skip delay of {skip_delay} (only applies if non zero)")   
+                        
+            layer = self.build_layer(code)
+            if skip_delay > 0 and i >= skip_delay:
+                layer += self.f[i-skip_delay]
+            
+            self.f.extend(layer)
+        self.f = self.f + [SNLinear(code, code)]
+        self.f = nn.Sequential(*self.f)
+
+    def build_layer(self, code, skip=None):
+        layer = []
+        layer.append(SNLinear(code, code))
+        
+        if self.act:
+            layer.append(Factory.get_activation(self.act)) 
+        if self.norm:
+            layer.append(Normalize(power=2))
+        if self.act == "selu":
+            layer.append(nn.AlphaDropout(0.05))
+        if self.use_attn:   
+            layer.append(PixelAttention1D(code))
+            
+        return layer
+    
+    def forward(self, z1, scale, z2=None, p_mix=0.9):
+        """
+        Outputs latent code of size (bs x n_blocks x latent_code_size), performing style mixing
+        """
+        n_blocks = int(log2(scale) - 1)
+        
+        # Make latent code of style (bs x n_blocks x latent_code_size)
+        style1 = self.f(z1)[:, None, :].repeat(1, n_blocks, 1)
+        
+        # Randomly decide if style mixing should be performed or not
+        if (random.random() < p_mix) & (z2 is not None) & (n_blocks!=1):
+            style2 = self.f(z2)[:, None, :].repeat(1, n_blocks, 1)
+            layer_idx = torch.arange(n_blocks)[None, :, None].to(z1.device)
+            mixing_cutoff = random.randint(1, n_blocks-1) #Insert style2 in 8x8 ... 1024x1024 blocks
+            return torch.where(layer_idx < mixing_cutoff, style1, style2)
+        else:
+            return style1 # If style2 is not used
+
+"""
 # ------------------------------------------------------------------------------------------------------------------
 # Discriminator used in StyleGAN2
 # https://github.com/taesungp/contrastive-unpaired-translation/blob/master/models/networks.py#L1375
@@ -1244,7 +1360,7 @@ class StyleGAN2Discriminator(nn.Module):
         out = self.final_linear(out)
 
         return out
-
+"""
 
 # ------------------------------------------------------------------------------------------------------------------
 # Feature Projection for GAN Contrastive Learning using Patches from same image
@@ -1692,7 +1808,7 @@ class Discriminator(nn.Module):
         layer.append(ScaledLinear(code, code))
 
         if self.norm:
-            layer.append(Factory.get_normalization(Factory.make_norm_1d(self.norm)))
+            layer.append(Factory.get_normalization(Factory.make_norm_2d(self.norm)))
         if self.act:
             layer.append(Factory.get_activation(self.act))  
             
