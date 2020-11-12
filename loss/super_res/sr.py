@@ -1,8 +1,17 @@
 """ Originally from https://github.com/zhaohengyuan1/PAN/
+and https://github.com/bmycheez/C3Net/blob/master/Burst
+
 """
+from math import exp
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
+from torch.nn.modules.loss import _Loss
+import numpy as np
+
+from super_res_layers import MeanShift
 
 class GradientLoss(nn.Module):
     def __init__(self):
@@ -174,3 +183,89 @@ class GradientPenaltyLoss(nn.Module):
 
         loss = ((grad_interp_norm - 1)**2).mean()
         return loss
+
+
+##################################################################
+## C3Net Burst
+####### https://github.com/bmycheez/C3Net/blob/master/Burst/ssim.py
+class VGG(torch.nn.Module):
+    def __init__(self, conv_index, rgb_range=1):
+        super(VGG, self).__init__()
+        vgg_features = models.vgg19(pretrained=True).features
+        modules = [m for m in vgg_features]
+        if conv_index == '22':
+            self.vgg = nn.Sequential(*modules[:8])
+        elif conv_index == '54':
+            self.vgg = nn.Sequential(*modules[:35])
+
+        vgg_mean = (0.485, 0.456, 0.406)
+        vgg_std = (0.229 * rgb_range, 0.224 * rgb_range, 0.225 * rgb_range)
+        self.sub_mean = MeanShift(rgb_range, vgg_mean, vgg_std)
+        self.vgg.requires_grad = False
+
+    def forward(self, sr, hr):
+        def _forward(x):
+            x = self.sub_mean(x)
+            x = self.vgg(x)
+            return x
+
+        vgg_sr = _forward(sr)
+        with torch.no_grad():
+            vgg_hr = _forward(hr.detach())
+
+        loss = F.l1_loss(vgg_sr, vgg_hr)
+
+        return loss
+
+
+class BurstLoss(_Loss):
+
+    def __init__(self, size_average=None, reduce=None, reduction='mean'):
+        super(BurstLoss, self).__init__(size_average, reduce, reduction)
+
+        self.reduction = reduction
+        use_cuda = torch.cuda.is_available()
+        device = torch.device("cuda:0" if use_cuda else "cpu")
+
+        prewitt_filter = 1 / 6 * np.array([[1, 0, -1],
+                                           [1, 0, -1],
+                                           [1, 0, -1]])
+
+        self.prewitt_filter_horizontal = torch.nn.Conv2d(in_channels=1, out_channels=1,
+                                                         kernel_size=prewitt_filter.shape,
+                                                         padding=prewitt_filter.shape[0] // 2).to(device)
+
+        self.prewitt_filter_horizontal.weight.data.copy_(torch.from_numpy(prewitt_filter).to(device))
+        self.prewitt_filter_horizontal.bias.data.copy_(torch.from_numpy(np.array([0.0])).to(device))
+
+        self.prewitt_filter_vertical = torch.nn.Conv2d(in_channels=1, out_channels=1,
+                                                       kernel_size=prewitt_filter.shape,
+                                                       padding=prewitt_filter.shape[0] // 2).to(device)
+
+        self.prewitt_filter_vertical.weight.data.copy_(torch.from_numpy(prewitt_filter.T).to(device))
+        self.prewitt_filter_vertical.bias.data.copy_(torch.from_numpy(np.array([0.0])).to(device))
+
+    def get_gradients(self, img):
+        img_r = img[:, 0:1, :, :]
+        img_g = img[:, 1:2, :, :]
+        img_b = img[:, 2:3, :, :]
+
+        grad_x_r = self.prewitt_filter_horizontal(img_r)
+        grad_y_r = self.prewitt_filter_vertical(img_r)
+        grad_x_g = self.prewitt_filter_horizontal(img_g)
+        grad_y_g = self.prewitt_filter_vertical(img_g)
+        grad_x_b = self.prewitt_filter_horizontal(img_b)
+        grad_y_b = self.prewitt_filter_vertical(img_b)
+
+        grad_x = torch.stack([grad_x_r[:, 0, :, :], grad_x_g[:, 0, :, :], grad_x_b[:, 0, :, :]], dim=1)
+        grad_y = torch.stack([grad_y_r[:, 0, :, :], grad_y_g[:, 0, :, :], grad_y_b[:, 0, :, :]], dim=1)
+
+        grad = torch.stack([grad_x, grad_y], dim=1)
+
+        return grad
+
+    def forward(self, input, target):
+        input_grad = self.get_gradients(input)
+        target_grad = self.get_gradients(target)
+
+        return F.l1_loss(input_grad, target_grad, reduction=self.reduction)
