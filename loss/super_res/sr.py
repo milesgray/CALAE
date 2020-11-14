@@ -11,7 +11,7 @@ import torchvision.models as models
 from torch.nn.modules.loss import _Loss
 import numpy as np
 
-from super_res_layers import MeanShift
+from CALAE.layers.super_res import MeanShift
 
 class GradientLoss(nn.Module):
     def __init__(self):
