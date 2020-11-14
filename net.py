@@ -26,7 +26,7 @@ import CALAE.losses
 from CALAE.layers.activations import Mish
 from CALAE.layers.attention import UNetAttention, SelfAttention, TripletAttention
 from CALAE.layers.spectralnorm import SN, SNConv2d, SNLinear
-from CAlAE.layers.coordconv import ExplicitAddCoords
+from CALAE.layers.coordconv import ExplicitAddCoords
 
 import lpips
 import piq
