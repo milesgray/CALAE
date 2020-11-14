@@ -5,7 +5,7 @@ from torch import nn
 from torchvision.models.resnet import BasicBlock
 
 
-class Encoder(nn.Module):
+class ResNetEncoder(nn.Module):
 
     def __init__(self, image_size: int, latent_size: int, num_input_channels: int, size_channel_map: dict, target_size: int = 4):
         super().__init__()

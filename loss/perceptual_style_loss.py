@@ -1,3 +1,7 @@
+""" From https://github.com/Bartzi/one-model-to-reconstruct-them-all/blob/main/losses/perceptual_style_loss.py
+
+"""
+
 from typing import Tuple, Union
 
 import torch
