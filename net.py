@@ -1618,7 +1618,7 @@ class GeneratorBlock(nn.Module):
         i = x
         if self.initial:
             x = x.repeat(w.shape[0], 1, 1, 1)
-            if self.use_coord:
+            if self.use_coord and bbox:
                 x = self.conv1(x, bbox)
         else:
             x = self.upsample(x)            
@@ -1629,7 +1629,7 @@ class GeneratorBlock(nn.Module):
                 x = self.blur_affine(x)
 
             
-            if self.use_coord:
+            if self.use_coord and bbox:
                 x = self.conv1(x, bbox)
             else:
                 x = self.conv1(x)
@@ -1898,7 +1898,7 @@ class Encoder(nn.Module):
 
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            if self.use_coord:
+            if self.use_coord and bbox:
                 x, w1, w2, n = self.encoder[-1](self.coord_blocks[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False))), bbox)
             else:
                 x, w1, w2, n = self.encoder[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False)))
@@ -1922,14 +1922,14 @@ class Encoder(nn.Module):
         
         # Convert input from RGB and blend across 2 scales
         if alpha < 1:
-            if self.use_coord:
+            if self.use_coord and bbox:
                 inp_top, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
             else:
                 inp_top, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
             inp_left = self.fromRGB[-n_blocks+1](x, downsample=True)
             x = inp_left.mul(1 - alpha) + inp_top.mul(alpha)
         else: # Use top shortcut
-            if self.use_coord:
+            if self.use_coord and bbox:
                 x, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
             else:
                 x, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
@@ -2056,14 +2056,14 @@ class StyleGenerator(nn.Module):
         
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            norm = self.generator[0](inp, w[:, 0]) 
+            norm = self.generator[0](inp, w[:, 0], bbox=bbox) 
             if return_norm: return [norm]
             else: return self.toRGB[0](norm, upsample=False)
 
         # If scale >= 8
         activations_2x = []
         for index in range(n_blocks):
-            inp = self.generator[index](inp, w[:, index])
+            inp = self.generator[index](inp, w[:, index], bbox=bbox)
             
             # if returning norm, cut out early
             if (return_norm and index in norm_layer_nums):
