@@ -138,8 +138,8 @@ class ExplicitAddCoords(nn.Module):
         """
         batch_size, _, x_dim, y_dim = input_tensor.size()
 
-        xx_channel = torch.arange(bbox[0], bbox[2]).repeat(1, y_dim, 1)
-        yy_channel = torch.arange(bbox[1], bbox[3]).repeat(1, x_dim, 1).transpose(1, 2)
+        xx_channel = torch.arange(int(bbox[:, 0].numpy()[0]), int(bbox[:, 2].numpy()[0])).repeat(1, y_dim, 1)
+        yy_channel = torch.arange(int(bbox[:, 1].numpy()[0]), int(bbox[:, 3].numpy()[0])).repeat(1, x_dim, 1).transpose(1, 2)
 
         xx_channel = xx_channel.float() / (x_dim - 1)
         yy_channel = yy_channel.float() / (y_dim - 1)
