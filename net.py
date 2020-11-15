@@ -1618,7 +1618,7 @@ class GeneratorBlock(nn.Module):
         i = x
         if self.initial:
             x = x.repeat(w.shape[0], 1, 1, 1)
-            if self.coord:
+            if self.use_coord:
                 x = self.conv1(x, bbox)
         else:
             x = self.upsample(x)            
@@ -1629,7 +1629,7 @@ class GeneratorBlock(nn.Module):
                 x = self.blur_affine(x)
 
             
-            if self.coord:
+            if self.use_coord:
                 x = self.conv1(x, bbox)
             else:
                 x = self.conv1(x)
