@@ -26,7 +26,7 @@ import CALAE.losses
 from CALAE.layers.activations import Mish
 from CALAE.layers.attention import UNetAttention, SelfAttention, TripletAttention
 from CALAE.layers.spectralnorm import SN, SNConv2d, SNLinear
-from CALAE.layers.coordconv import ExplicitAddCoords
+from CALAE.layers.coordconv import ExplicitCoordConv
 
 import lpips
 import piq
@@ -1543,7 +1543,7 @@ class EncoderBlock(nn.Module):
 class GeneratorBlock(nn.Module):
     def __init__(self, inp_c, oup_c, code, initial=False, blur_upsample=True, 
                  fused_scale=True, learn_blur=True, learn_residual=False, 
-                 learn_style=False, learn_noise=False, use_attn=True,
+                 learn_style=False, learn_noise=False, use_attn=True, use_coord=True,
                  scale=4, act="leaky", norm="pixel"):
         super().__init__()
                 
@@ -1553,6 +1553,7 @@ class GeneratorBlock(nn.Module):
         self.learn_residual = learn_residual
         self.learn_style = learn_style
         self.learn_noise = learn_noise
+        self.use_coord = use_coord
 
         # learnable affine transform to correct blur
         if self.learn_blur:
@@ -1587,10 +1588,15 @@ class GeneratorBlock(nn.Module):
             self.ada_norm2 = AdaIN(oup_c, code)
         
         # In case if it is the initial block, learnable constant is created
-        if self.initial:
+        if self.initial:            
             self.constant = nn.Parameter(torch.randn(1, inp_c, 4, 4), requires_grad=True)
+            if self.use_coord:                
+                self.conv1 = ExplicitCoordConv(inp_c, inp_c, kernel_size=3, padding=1)
         else:
-            self.conv1 = lreq.Conv2d(inp_c, inp_c, kernel_size=3, padding=1)
+            if self.use_coord:                
+                self.conv1 = ExplicitCoordConv(inp_c, inp_c, kernel_size=3, padding=1)
+            else:
+                self.conv1 = lreq.Conv2d(inp_c, inp_c, kernel_size=3, padding=1)
             
         self.conv2 = lreq.Conv2d(inp_c, oup_c, kernel_size=3, padding=1)
         
@@ -1603,7 +1609,7 @@ class GeneratorBlock(nn.Module):
         if act:
             self.activation = Factory.get_activation(act)        
         
-    def forward(self, x, w, e=None):
+    def forward(self, x, w, bbox=None, e=None):
         """
         x - (N x C x H x W) -> N x C x H*2 x W*2
         w - (N x C), where A: (N x C) -> (N x (C x 2))
@@ -1611,7 +1617,9 @@ class GeneratorBlock(nn.Module):
         """
         i = x
         if self.initial:
-            x = x.repeat(w.shape[0], 1, 1, 1)            
+            x = x.repeat(w.shape[0], 1, 1, 1)
+            if self.coord:
+                x = self.conv1(x, bbox)
         else:
             x = self.upsample(x)            
             
@@ -1620,7 +1628,11 @@ class GeneratorBlock(nn.Module):
             if self.learn_blur:
                 x = self.blur_affine(x)
 
-            x = self.conv1(x)
+            
+            if self.coord:
+                x = self.conv1(x, bbox)
+            else:
+                x = self.conv1(x)
             x = self.attn(x)
             x = self.activation(x)    
             
@@ -1838,17 +1850,19 @@ class Encoder(nn.Module):
                  blur_downsample=False, 
                  learn_blend=True,
                  learn_blur=True, 
+                 use_coord=True,
                  verbose=False):
         super().__init__()
         
         self.learn_blend = learn_blend
         
-        
+        self.use_coord = use_coord
         self.code = code  
         encoder_blocks = []
         from_rgb_blocks = []
         attn_blocks = []
-        if learn_blend:
+        coord_blocks = []
+        if learn_blend: 
             self.blend_gains = []
         self.max_scale = 0
         for i, (scale, settings) in enumerate(blocks.items()):
@@ -1860,6 +1874,8 @@ class Encoder(nn.Module):
                                                learn_blur=learn_blur))
             from_rgb_blocks.append(FromRGB(3, max_fm//settings["rgb"]))
             attn_blocks.append(SelfAttention(max_fm//settings["enc"][1], 'leaky'))
+            if use_coord:
+                coord_blocks.append(ExplicitCoordConv(max_fm//settings["enc"][1], max_fm//settings["enc"][1], kernel_size=1, padding=0))
             if learn_blend:
                 self.blend_gains.append(nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)), requires_grad=True))
             self.max_scale = max(scale, self.max_scale)
@@ -1869,7 +1885,7 @@ class Encoder(nn.Module):
         self.fromRGB =  nn.ModuleList(from_rgb_blocks)
         self.attn = nn.ModuleList(attn_blocks)
         
-    def forward(self, x, alpha=1., return_norm=False, return_blocks=False):
+    def forward(self, x, alpha=1., return_norm=False, return_blocks=False, bbox=None):
         if return_blocks:
             blocks = []
         if return_norm:
@@ -1882,7 +1898,10 @@ class Encoder(nn.Module):
 
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            x, w1, w2, n = self.encoder[-1](self.fromRGB[-1](x, downsample=False))
+            if self.use_coord:
+                x, w1, w2, n = self.encoder[-1](self.coord_blocks[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False))), bbox)
+            else:
+                x, w1, w2, n = self.encoder[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False)))
             if return_norm and not return_blocks and -1 in norm_layer_num: 
                 return n
             if self.learn_blend:
@@ -1903,11 +1922,17 @@ class Encoder(nn.Module):
         
         # Convert input from RGB and blend across 2 scales
         if alpha < 1:
-            inp_top, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
+            if self.use_coord:
+                inp_top, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
+            else:
+                inp_top, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
             inp_left = self.fromRGB[-n_blocks+1](x, downsample=True)
             x = inp_left.mul(1 - alpha) + inp_top.mul(alpha)
         else: # Use top shortcut
-            x, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
+            if self.use_coord:
+                x, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
+            else:
+                x, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
 
         #w += (w1 + w2)
         if self.learn_blend:
@@ -1920,6 +1945,8 @@ class Encoder(nn.Module):
             blocks.append((x, w, n))
 
         for index in range(-n_blocks + 1, 0):
+            if self.use_coord:
+                x = self.coord_blocks[index](x, bbox)
             x, w1, w2, n = self.encoder[index](x)
             if return_norm and index in norm_layer_num:
                 norms.append(n)
@@ -1963,6 +1990,7 @@ class StyleGenerator(nn.Module):
                  learn_style=False, 
                  learn_noise=False, 
                  use_attn=True,
+                 use_coord=True,
                  act="leaky",
                  norm="instance",
                  verbose=False):
@@ -1981,6 +2009,7 @@ class StyleGenerator(nn.Module):
                                     learn_style=learn_style,
                                     learn_noise=learn_noise,
                                     use_attn=use_attn,
+                                    use_coord=use_coord,
                                     act=act,
                                     norm=norm,
                                     scale=scale))
@@ -2013,7 +2042,7 @@ class StyleGenerator(nn.Module):
         for key in runing_parameters.keys():
             runing_parameters[key].data.mul_(beta).add_(1 - beta, dict(model.named_parameters())[key].data)
         
-    def forward(self, w, scale, alpha=1, return_norm=False):
+    def forward(self, w, scale, alpha=1, bbox=None, return_norm=False):
         if return_norm:
             # return norm is not 0, it should be set to the layer index (positive)
             # of the layer to use for the return value
