@@ -172,6 +172,7 @@ class ExplicitCoordConv(nn.Module):
         self.conv = nn.Conv2d(in_size, out_channels, **kwargs)
 
     def forward(self, x, coords):
+        print(f"{self.__class__.__name__} - x shape: {x.shape} - coords shape: {coords.shape}")
         ret = self.addcoords(x, coords)
         ret = self.conv(ret)
         return ret        
