@@ -8,3 +8,10 @@ from .density import matrix_log_density_gaussian, log_density_gaussian
 from .importance import log_importance_weight_matrix
 from .files import ensure_dir, ensure_parent_dir
 from .alae import img_from_tensor
+
+# General utility methods
+
+def query_gpu(indices=[0]):
+    import os
+    for i in indices:
+        os.system(f'nvidia-smi -i {i} --query-gpu=memory.free --format=csv')
