@@ -1899,9 +1899,9 @@ class Encoder(nn.Module):
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
             if self.use_coord and bbox is not None:
-                x, w1, w2, n = self.encoder[-1](self.coord_blocks[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False))), bbox)
+                x, w1, w2, n = self.encoder[-1](self.coord_blocks[-1](self.attn[-1](self.fromRGB[-1](x, downsample=False))), bbox)
             else:
-                x, w1, w2, n = self.encoder[-1](self.attn_blocks[-1](self.fromRGB[-1](x, downsample=False)))
+                x, w1, w2, n = self.encoder[-1](self.attn[-1](self.fromRGB[-1](x, downsample=False)))
             if return_norm and not return_blocks and -1 in norm_layer_num: 
                 return n
             if self.learn_blend:
@@ -1923,16 +1923,16 @@ class Encoder(nn.Module):
         # Convert input from RGB and blend across 2 scales
         if alpha < 1:
             if self.use_coord and bbox is not None:
-                inp_top, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
+                inp_top, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox))
             else:
-                inp_top, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
+                inp_top, w1, w2, n = self.encoder[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)))
             inp_left = self.fromRGB[-n_blocks+1](x, downsample=True)
             x = inp_left.mul(1 - alpha) + inp_top.mul(alpha)
         else: # Use top shortcut
             if self.use_coord and bbox is not None:
-                x, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox)
+                x, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox))
             else:
-                x, w1, w2, n = self.encoder[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False))
+                x, w1, w2, n = self.encoder[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)))
 
         #w += (w1 + w2)
         if self.learn_blend:
