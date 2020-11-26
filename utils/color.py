@@ -140,6 +140,5 @@ def hsv2rgb(hsv):
     k = (n + h * 6) % 6
     t = torch.min(k, 4 - k)
     t = torch.clamp(t, 0, 1)
-    '
 
     return v - c * t
