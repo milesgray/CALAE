@@ -1858,6 +1858,7 @@ class Encoder(nn.Module):
         self.learn_blend = learn_blend
         
         self.use_coord = use_coord
+        self.use_attn = use_attn
         self.code = code  
         encoder_blocks = []
         from_rgb_blocks = []
