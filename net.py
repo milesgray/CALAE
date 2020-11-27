@@ -1851,6 +1851,7 @@ class Encoder(nn.Module):
                  learn_blend=True,
                  learn_blur=True, 
                  use_coord=True,
+                 use_attn=False,
                  verbose=False):
         super().__init__()
         
@@ -1873,7 +1874,8 @@ class Encoder(nn.Module):
                                                blur_downsample=blur_downsample, 
                                                learn_blur=learn_blur))
             from_rgb_blocks.append(FromRGB(3, max_fm//settings["rgb"]))
-            attn_blocks.append(SelfAttention(max_fm//settings["enc"][1], 'leaky'))
+            if use_attn:
+                attn_blocks.append(SelfAttention(max_fm//settings["enc"][0], 'leaky'))
             if use_coord:
                 coord_blocks.append(ExplicitCoordConv(max_fm//settings["enc"][1], max_fm//settings["enc"][1], kernel_size=1, padding=0))
             if learn_blend:
@@ -1883,7 +1885,10 @@ class Encoder(nn.Module):
 
         self.encoder = nn.ModuleList(encoder_blocks)        
         self.fromRGB =  nn.ModuleList(from_rgb_blocks)
-        self.attn = nn.ModuleList(attn_blocks)
+        if use_attn:
+            self.attn = nn.ModuleList(attn_blocks)
+        if use_coord:
+            self.coord = nn.ModuleList(coord_blocks)
         
     def forward(self, x, alpha=1., return_norm=False, return_blocks=False, bbox=None):
         if return_blocks:
@@ -1898,10 +1903,12 @@ class Encoder(nn.Module):
 
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
+            x = self.fromRGB[-1](x, downsample=False)
+            if self.use_attn:
+                x = self.attn[-1](x)
             if self.use_coord and bbox is not None:
-                x, w1, w2, n = self.encoder[-1](self.coord_blocks[-1](self.attn[-1](self.fromRGB[-1](x, downsample=False))), bbox)
-            else:
-                x, w1, w2, n = self.encoder[-1](self.attn[-1](self.fromRGB[-1](x, downsample=False)))
+                x = self.coord[-1](x, bbox)
+            x, w1, w2, n = self.encoder[-1](x)
             if return_norm and not return_blocks and -1 in norm_layer_num: 
                 return n
             if self.learn_blend:
@@ -1922,17 +1929,22 @@ class Encoder(nn.Module):
         
         # Convert input from RGB and blend across 2 scales
         if alpha < 1:
+            x_top = self.fromRGB[-n_blocks](x, downsample=False)
+            if self.use_attn:
+                x_top = self.attn[-n_blocks](x_top)
             if self.use_coord and bbox is not None:
-                inp_top, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox))
-            else:
-                inp_top, w1, w2, n = self.encoder[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)))
+                x_top = self.coord[-n_blocks](x_top, bbox)
+            inp_top, w1, w2, n = self.encoder[-n_blocks](x_top)
+
             inp_left = self.fromRGB[-n_blocks+1](x, downsample=True)
             x = inp_left.mul(1 - alpha) + inp_top.mul(alpha)
         else: # Use top shortcut
+            x = self.fromRGB[-n_blocks](x, downsample=False)
+            if self.use_attn:
+                x = self.attn[-n_blocks](x)
             if self.use_coord and bbox is not None:
-                x, w1, w2, n = self.encoder[-n_blocks](self.coord_blocks[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)), bbox))
-            else:
-                x, w1, w2, n = self.encoder[-n_blocks](self.attn[-n_blocks](self.fromRGB[-n_blocks](x, downsample=False)))
+                x = self.coord[-n_blocks](x, bbox)
+            x, w1, w2, n = self.encoder[-n_blocks](x)
 
         #w += (w1 + w2)
         if self.learn_blend:
@@ -1945,8 +1957,10 @@ class Encoder(nn.Module):
             blocks.append((x, w, n))
 
         for index in range(-n_blocks + 1, 0):
+            if self.use_attn:
+                x = self.attn[index](x)
             if self.use_coord:
-                x = self.coord_blocks[index](x, bbox)
+                x = self.coord[index](x, bbox)
             x, w1, w2, n = self.encoder[index](x)
             if return_norm and index in norm_layer_num:
                 norms.append(n)
