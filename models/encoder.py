@@ -20,7 +20,7 @@ from CALAE.layers.activations import Mish
 from CALAE.layers.attention import UNetAttention, SelfAttention, TripletAttention
 from CALAE.layers.spectralnorm import SN, SNConv2d, SNLinear
 from CALAE.layers.coordconv import ExplicitCoordConv
-from CALAE.layers import ToRGB, FromRGB
+from CALAE.layers.image import ToRGB, FromRGB
 
 class Encoder(nn.Module):
     def __init__(self, max_fm, code, 

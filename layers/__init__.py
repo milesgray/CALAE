@@ -1,5 +1,5 @@
 from .activations import Mish, XTanh, XSigmoid
-from .attention import SAGAN_Attention, UNetAttention, SelfAttention, ChannelAttentionModule, SqueezeExciteAttention, TripletAttention
+from .attention import SAGAN_Attention, UNetAttention, SelfAttention, ChannelAttentionModule, TripletAttention
 from .bicubic import BicubicDownSample
 from .blur import Blur, BlurSimple
 from .coordconv import ExplicitCoordConv, CoordConv, CoordConvTh
