@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from CALAE.layers.scaled import ScaledConv2d 
+from .scaled import ScaledConv2d 
 from CALAE.models import stylegan2
 
 # ------------------------------------------------------------------------------------------------------------------

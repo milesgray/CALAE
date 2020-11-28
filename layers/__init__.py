@@ -7,7 +7,7 @@ from .downsample import *
 from .effconv import *
 from .factory import *
 from .functional import *
-from .image import FromRGB, toRGB
+from .image import FromRGB, ToRGB
 from .lossbuilder import *
 from .lreq import *
 from .made import *
