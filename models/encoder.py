@@ -23,6 +23,7 @@ from CALAE.layers.coordconv import ExplicitCoordConv
 from CALAE.layers.image import ToRGB, FromRGB
 from CALAE.layers.learnable import LearnableAffineTransform2d
 from CALAE.layers.factory import Factory
+from CALAE.layers.blur import Blur
 
 class Encoder(nn.Module):
     def __init__(self, max_fm, code, 
