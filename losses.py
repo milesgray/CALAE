@@ -91,7 +91,12 @@ def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
     if loss_fn:
         if use_perceptual:
             scale = fake.shape[2]
-            p_func = perceptual_loss[scale] if scale < 32 else perceptual_loss[32]
+            p_scale = scale if scale < 32 else 32
+            p_func = perceptual_loss[p_scale]
+            if p_func is None:
+                p_func = PerceptualLoss(ilayer=percep_layer_lookup[p_scale])
+                perceptual_loss[scale] = p_func
+                
             loss = loss_fn(p_func(fake), p_func(real))
         else:
             loss = loss_fn(fake, real)
@@ -232,13 +237,19 @@ percep_layer_lookup = {
     32: 23
 }
 perceptual_loss = {
-    4: PerceptualLoss(ilayer=percep_layer_lookup[4]),
-    8: PerceptualLoss(ilayer=percep_layer_lookup[8]),
-    16: PerceptualLoss(ilayer=percep_layer_lookup[16]),
-    32: PerceptualLoss(ilayer=percep_layer_lookup[32]),
+    4: None,
+    8: None,
+    16: None,
+    32: None,
 }
 def percep_loss(x, y, scale):
-    loss = perceptual_loss[scale if scale < 32 else 32](x) - perceptual_loss[scale if scale < 32 else 32](y)
+    p_scale = scale if scale < 32 else 32
+    p_func = perceptual_loss[p_scale]
+    if p_func is None:
+        p_func = PerceptualLoss(ilayer=percep_layer_lookup[p_scale])
+        perceptual_loss[scale] = p_func
+
+    loss = p_func(x) - p_func(y)    
     loss = loss.pow(2)
     loss = loss.mean()
     return loss
