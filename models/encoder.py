@@ -74,7 +74,7 @@ class Encoder(nn.Module):
         # temporary module lists
         encoder_blocks = []
         from_rgb_blocks = []
-        if self.use_atttn:
+        if self.use_attn:
             attn_blocks = []
         if self.use_coord:
             coord_blocks = []
