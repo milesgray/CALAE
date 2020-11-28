@@ -112,10 +112,10 @@ class SelfAttention(nn.Module):
         return out     #attention # Return 1.attention residual result 2.N*N attention map (what's the point)
 
 # CAM module
-class ChannelAttentionModule(nn.Module):
+class ChannelAttention(nn.Module):
     """ Channel attention module"""
     def __init__(self, in_dim):
-        super(ChannelAttentionModule, self).__init__()
+        super().__init__()
         self.chanel_in = in_dim
 
         self.gamma = nn.Parameter(torch.zeros(1))
@@ -140,11 +140,11 @@ class ChannelAttentionModule(nn.Module):
 ## Squeeze Excite style Channel Attention
 ## https://github.com/bmycheez/C3Net/blob/master/Burst/models.py#L42
 
-class SqueezeExciteModule(nn.Module):
-    def __init__(self, channel, reduction=16):
+class SqueezeExciteAttention(nn.Module):
+    def __init__(self, channel, reduction=16, pool_size=1):
         super().__init__()
         # global average pooling: feature --> point
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.avg_pool = nn.AdaptiveAvgPool2d(pool_size)
         # feature channel downscale and upscale --> channel weight
         self.conv_du = nn.Sequential(
             nn.Conv2d(channel, channel // reduction, 1, padding=0, bias=True),

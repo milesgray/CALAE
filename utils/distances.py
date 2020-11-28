@@ -164,7 +164,7 @@ class DistancesTorch:
             / (ntt + nff + (2.0 * (ntf + nft))).type(dtype=torch.float32)
 
     def russellrao(self, a, b):
-        return (a.shape[0] - (a * b).sum()).type(dtype=torch.float32) / len(a)
+        return (a.shape[0] - (a * b).sum()).type(dtype=torch.float32) / a.shape[0]
 
     def seuclidean(self, a, b, V):
         return torch.sqrt(torch.sum((a - b) ** 2 / V))

@@ -49,3 +49,7 @@ def log_density_gaussian(x, mu, logvar):
     inv_var = torch.exp(-logvar)
     log_density = normalization - 0.5 * ((x - mu)**2 * inv_var)
     return log_density
+
+def standard_normal_logprob(z):
+    logZ = -0.5 * math.log(2 * math.pi)
+    return logZ - z.pow(2) / 2
