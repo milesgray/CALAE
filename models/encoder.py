@@ -81,8 +81,9 @@ class Encoder(nn.Module):
             attn_blocks = []
         if self.use_coord:
             coord_blocks = []
-        if self.learn_blend: 
-            blend_gains = []
+        if self.learn_blend:
+            # Blend is simply a parameter, not a module
+            self.blend = []
         self.max_scale = 0
         for i, (scale, settings) in enumerate(blocks.items()):
             if verbose: print(f"[Encoder]\t Block {i} for scale {scale} with settings: {settings}")      
@@ -97,7 +98,7 @@ class Encoder(nn.Module):
             if self.use_coord:
                 coord_blocks.append(ExplicitCoordConv(max_fm//settings["enc"][1], max_fm//settings["enc"][1], kernel_size=1, padding=0))
             if self.learn_blend:
-                blend_gains.append(nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)), requires_grad=True))
+                self.blend.append(nn.Parameter(torch.from_numpy(np.array([1, -1], dtype=np.float32)), requires_grad=True))
             self.max_scale = max(scale, self.max_scale)
         print(f"[Encoder]\t Max scale achievable: {self.max_scale}")
 
@@ -107,8 +108,6 @@ class Encoder(nn.Module):
             self.attn = nn.ModuleList(attn_blocks)
         if self.use_coord:
             self.coord = nn.ModuleList(coord_blocks)
-        if self.learn_blend:
-            self.blend = nn.ModuleList(blend_gains)
         
     def forward(self, x, alpha=1., return_norm=False, return_blocks=False, bbox=None):
         if return_blocks:
