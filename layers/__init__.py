@@ -9,6 +9,7 @@ from .factory import *
 from .functional import *
 from .image import FromRGB, ToRGB
 from .lossbuilder import *
+from .learnable import LearnableGaussianTransform0d, LearnableGaussianTransform1d, LearnableGaussianTransform2d, LearnableAffineTransform0d, LearnableAffineTransform1d, LearnableAffineTransform2d
 from .lreq import *
 from .made import *
 from .norm_flow import *

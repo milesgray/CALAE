@@ -21,6 +21,7 @@ from CALAE.layers.attention import UNetAttention, SelfAttention, TripletAttentio
 from CALAE.layers.spectralnorm import SN, SNConv2d, SNLinear
 from CALAE.layers.coordconv import ExplicitCoordConv
 from CALAE.layers.image import ToRGB, FromRGB
+from CALAE.layers.learnable import LearnableAffineTransform2d
 
 class Encoder(nn.Module):
     def __init__(self, max_fm, code, 
