@@ -59,6 +59,5 @@ class StructureContrastLoss(torch.nn.Module):
             
             self.window = window
             self.channel = channel
-
-
+            
         return structure_contrast_compare(img1, img2, window, self.window_size, channel, self.size_average)   
