@@ -10,8 +10,8 @@ import math
 from scipy import linalg
 from tqdm import tqdm
 
-from ..utils.sample import sample_latents
-from ..loss.latent import optimize as latent_optimise
+from CALAE.utils.sample import sample_latents
+from CALAE.loss.latent import optimize as latent_optimise
 
 import torch
 from torch.nn import DataParallel
