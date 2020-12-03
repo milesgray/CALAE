@@ -6,7 +6,7 @@ from CALAE import utils
 import piq
 import lpips
 
-def train(models, args, hyperparams, loss_dict, loss_stats, )
+def train(models, args, hyperparams, loss_dict, loss_stats, **kwargs):
     for scale_index, scale in enumerate(hyperparams["valid_scales"]):
         scale_num += 1
         epochs = hyperparams["epochs_by_scale"][scale]

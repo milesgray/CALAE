@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 def euclidean_loss(X, mu_tilde):
     """
     Computes the Euclidean loss.
@@ -16,7 +15,6 @@ def euclidean_loss(X, mu_tilde):
     """
 
     return torch.sqrt(torch.sum((X - mu_tilde) ** 2, axis=1))
-
 
 def cosine_loss(X, mu_tilde):
     """
@@ -35,7 +33,6 @@ def cosine_loss(X, mu_tilde):
     mu_tilde_norm = torch.nn.l2_normalize(mu_tilde, axis=1)
     return 1 - torch.sum(X_norm * mu_tilde_norm, axis=1)
 
-
 def correlation_loss(X, mu_tilde):
     """
     Computes the Correlation loss.
@@ -53,7 +50,6 @@ def correlation_loss(X, mu_tilde):
     centered_mu_tilde = mu_tilde - torch.reshape(torch.mean(mu_tilde, axis=1), (-1, 1))
     return cosine_loss(centered_X, centered_mu_tilde)
 
-
 def manhattan_loss(X, mu_tilde):
     """
     Computes the Manhattan loss.
@@ -68,7 +64,6 @@ def manhattan_loss(X, mu_tilde):
     """
 
     return torch.sum(torch.abs(X - mu_tilde), axis=1)
-
 
 def minkowsky_loss(X, mu_tilde, p):
     """
@@ -87,7 +82,6 @@ def minkowsky_loss(X, mu_tilde, p):
 
     return torch.sum(torch.abs(X - mu_tilde) ** p, axis=1) ** (1 / p)
 
-
 def chebyshev_loss(X, mu_tilde):
     """
     Computes the Chebyshev loss.
@@ -102,7 +96,6 @@ def chebyshev_loss(X, mu_tilde):
     """
 
     return torch.max(torch.abs(X - mu_tilde), axis=1)
-
 
 def mahalanobis_loss(X, mu_tilde, Cov_tilde):
     """
@@ -126,7 +119,6 @@ def mahalanobis_loss(X, mu_tilde, Cov_tilde):
         )
     )
 
-
 def mahalanobis_loss_decomp(X, mu_tilde, Cov_tilde):
     """
     Computes the Mahalanobis loss using the decomposition of the covariance matrices.
@@ -147,7 +139,6 @@ def mahalanobis_loss_decomp(X, mu_tilde, Cov_tilde):
     return torch.squeeze(
         torch.matmul(torch.matmul(diff, cov), torch.transpose(diff, perm=[0, 2, 1]))
     )
-
 
 def geocross_loss(x):
     """
