@@ -10,7 +10,7 @@ import random
 from numpy import linalg
 from math import sin,cos,sqrt
 
-from ..loss.latent import optimize as latent_optimise
+from CALAE.loss.latent import optimize as latent_optimise
 
 import torch
 import torch.nn.functional as F
