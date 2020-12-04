@@ -23,9 +23,9 @@ def sqrt_svd_lyap(A, dldz, dtype):
         S = S.diag().sqrt().mm(torch.ones(dim, dim).type(dtype))
         IU = U.t()
         X = -U.mm(
-                        ((IU.mm(dldz[i,:,:].data)).mm(IU.t()))
-                        /(S+S.t())
-                        ).mm(U.t());
+                ((IU.mm(dldz[i,:,:].data)).mm(IU.t()))
+                /(S+S.t())
+                ).mm(U.t())
         dlda[i,:,:] = X
     return sA, dlda, compute_error(A, Variable(sA, requires_grad=False))
 
@@ -52,7 +52,7 @@ def sqrt_newton_schulz_autograd(A, numIters, dtype):
     batchSize = A.data.shape[0]
     dim = A.data.shape[1]
     normA = A.mul(A).sum(dim=1).sum(dim=1).sqrt()
-    Y = A.div(normA.view(batchSize, 1, 1).expand_as(A));
+    Y = A.div(normA.view(batchSize, 1, 1).expand_as(A))
     I = Variable(torch.eye(dim,dim).view(1, dim, dim).
                              repeat(batchSize,1,1).type(dtype),requires_grad=False)
     Z = Variable(torch.eye(dim,dim).view(1, dim, dim).
@@ -62,7 +62,7 @@ def sqrt_newton_schulz_autograd(A, numIters, dtype):
         T = 0.5*(3.0*I - Z.bmm(Y))
         Y = Y.bmm(T)
         Z = T.bmm(Z)
-    sA = Y*torch.sqrt(normA).view(batchSize, 1, 1).expand_as(A)
+    sA = Y * torch.sqrt(normA).view(batchSize, 1, 1).expand_as(A)
     error = compute_error(A, sA)
     return sA, error
 
@@ -95,14 +95,14 @@ def lyap_newton_schulz(z, dldz, numIters, dtype):
         q = 0.5*(q.bmm(3.0*I - a.bmm(a)) - a.transpose(1, 2).bmm(a.transpose(1,2).bmm(q) - q.bmm(a)) )
         a = 0.5*a.bmm(3.0*I - a.bmm(a))
     dlda = 0.5*q
-    return dlda           
+    return dlda
 
 # Create random PSD matrix
 def create_symm_matrix(batchSize, dim, numPts, tau, dtype):
-        A = torch.zeros(batchSize, dim, dim).type(dtype)
-        for i in range(batchSize):
-                pts = np.random.randn(numPts, dim).astype(np.float32)
-                sA = np.dot(pts.T, pts)/numPts + tau*np.eye(dim).astype(np.float32);
-                A[i,:,:] = torch.from_numpy(sA);
-        print 'Creating batch %d, dim %d, pts %d, tau %f, dtype %s' %(batchSize, dim, numPts, tau, dtype)
-        return A
+    A = torch.zeros(batchSize, dim, dim).type(dtype)
+    for i in range(batchSize):
+        pts = np.random.randn(numPts, dim).astype(np.float32)
+        sA = np.dot(pts.T, pts)/numPts + tau*np.eye(dim).astype(np.float32)
+        A[i,:,:] = torch.from_numpy(sA)
+    print(f'Creating batch {batchSize}, dim {dim}, pts {numPts}, tau {tau}, dtype {dtype}')
+    return A

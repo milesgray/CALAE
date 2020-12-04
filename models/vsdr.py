@@ -2,7 +2,7 @@
 
 """
 
-from ..layers import super_res as common
+from CALAE.layers import super_res as common
 
 import torch.nn as nn
 import torch.nn.init as init
