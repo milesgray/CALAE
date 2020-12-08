@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from CALAE.util import clean
+from CALAE.utils import clean
 
 class ColorVectLoss(nn.Module):
     def __init__(self, color_axes=[0,1,2]):
