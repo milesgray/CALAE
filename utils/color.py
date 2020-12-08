@@ -5,6 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+#########################################################
+######## [L]IGHTNESS [A][B] COLOR SPACE  ###############################
+#########################################################
+### https://en.wikipedia.org/wiki/CIELAB_color_space
+
 def preprocess_lab(lab):
     L_chan, a_chan, b_chan =torch.unbind(lab,dim=2)
     # L_chan: black and white with input range [0, 100]
@@ -94,6 +99,11 @@ def lab_to_rgb(lab):
     srgb_pixels = (rgb_pixels * 12.92 * linear_mask) + (((rgb_pixels+0.000001) ** (1/2.4) * 1.055) - 0.055) * exponential_mask
 
     return torch.reshape(srgb_pixels, lab.shape)
+
+#########################################################
+######## [H]UE [S]ATURATION [V]ALUE COLOR SPACE #########
+#########################################################
+#### https://en.wikipedia.org/wiki/HSL_and_HSV
 
 def rgb2hsv(rgb):
     """Convert a 4-d RGB tensor to the HSV counterpart.

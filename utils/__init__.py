@@ -15,3 +15,14 @@ def query_gpu(indices=[0]):
     import os
     for i in indices:
         os.system(f'nvidia-smi -i {i} --query-gpu=memory.free --format=csv')
+
+def clean(string_value):
+    """Standardizes string values for lookup by removing case and special characters and spaces.
+
+    Args:
+        string_value (str): The lookup key to be transformed.
+
+    Returns:
+        str: The original value, but lowercase and without spaces, underscores or dashes.
+    """
+    return string_value.lower().strip().replace("_","").replace("-","").replace(" ","")

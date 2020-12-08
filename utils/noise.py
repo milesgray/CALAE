@@ -60,7 +60,7 @@ class FAMOS_Noise:
         return awave
 
     def set_noise(self, noise, use_gl=True, use_periodic=True):
-        noise = noise.detach() *1 .0
+        noise = noise.detach() # *1 .0
         noise.uniform_(-1, 1)  # normal_(0, 1)
         if use_gl:
             noise[:, :self.z_gl] = noise[:, :self.z_gl, :1, :1].repeat(1, 1, noise.shape[2], noise.shape[3])
