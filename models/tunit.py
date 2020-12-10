@@ -5,8 +5,11 @@ import torch.nn.init as init
 from torch import nn
 import numpy as np
 
-
 import math
+
+##########################################################################
+##### P A R T S ###############################################
+####################################################
 
 class ResBlocks(nn.Module):
     def __init__(self, num_blocks, dim, norm, act, pad_type, use_sn=False):
@@ -18,7 +21,6 @@ class ResBlocks(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
 
 class ResBlock(nn.Module):
     def __init__(self, dim, norm='in', act='relu', pad_type='zero', use_sn=False):
@@ -37,7 +39,6 @@ class ResBlock(nn.Module):
         residual = self.model(x)
         out = x_org + 0.1 * residual
         return out
-
 
 class ActFirstResBlk(nn.Module):
     def __init__(self, dim_in, dim_out, downsample=True):
@@ -69,7 +70,6 @@ class ActFirstResBlk(nn.Module):
 
     def forward(self, x):
         return torch.rsqrt(torch.tensor(2.0)) * self._shortcut(x) + torch.rsqrt(torch.tensor(2.0)) * self._residual(x)
-
 
 class LinearBlock(nn.Module):
     def __init__(self, in_dim, out_dim, norm='none', act='relu', use_sn=False):
@@ -109,7 +109,6 @@ class LinearBlock(nn.Module):
         if self.activation:
             out = self.activation(out)
         return out
-
 
 class Conv2dBlock(nn.Module):
     def __init__(self, in_dim, out_dim, ks, st, padding=0,
@@ -165,7 +164,6 @@ class Conv2dBlock(nn.Module):
             x = self.activation(x)
         return x
 
-
 class FRN(nn.Module):
     def __init__(self, num_features, eps=1e-6):
         super(FRN, self).__init__()
@@ -177,7 +175,6 @@ class FRN(nn.Module):
     def forward(self, x):
         x = x * torch.rsqrt(torch.mean(x**2, dim=[2, 3], keepdim=True) + self.eps)
         return torch.max(self.gamma * x + self.beta, self.tau)
-
 
 class AdaIN2d(nn.Module):
     def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=False, track_running_stats=True):
@@ -215,8 +212,11 @@ class AdaIN2d(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(num_features=' + str(self.num_features) + ')'
+
 ##############################################################################################
-################################################### DISCRIMINATOR
+############################# D I S C R I M I N A T O R ############################
+#########################################################################
+
 class Discriminator(nn.Module):
     """Discriminator: (image x, domain y) -> (logit out)."""
     def __init__(self, image_size=256, num_domains=2, max_conv_dim=1024):
@@ -238,7 +238,7 @@ class Discriminator(nn.Module):
         blocks += [nn.Conv2d(dim_out, num_domains, 1, 1, 0)]
         self.main = nn.Sequential(*blocks)
 
-        self.apply(weights_init('kaiming'))
+        self.apply(disc_weights_init('kaiming'))
 
     def forward(self, x, y):
         """
@@ -263,7 +263,7 @@ class Discriminator(nn.Module):
                     m.bias.data.zero_()
 
 
-def weights_init(init_type='gaussian'):
+def disc_weights_init(init_type='gaussian'):
     def init_fun(m):
         classname = m.__class__.__name__
         if (classname.find('Conv') == 0 or classname.find(
@@ -285,7 +285,9 @@ def weights_init(init_type='gaussian'):
     return init_fun
 
 #####################################################################################
-###################################### GENERATOR
+###################################### G E N E R A T O R #####################
+######################################################################
+
 class Generator(nn.Module):   
     def __init__(self, img_size=128, sty_dim=64, n_res=2, use_sn=False):
         super(Generator, self).__init__()
@@ -446,10 +448,9 @@ cfg = {
 
 class GuidingNet(nn.Module):
     def __init__(self, img_size=64, output_k={'cont': 128, 'disc': 10}):
-        super(GuidingNet, self).__init__()
-        cfg_key = list(cfg.keys())[(img_size//64) - 1]
+        super(GuidingNet, self, config_idx=0).__init__()        
         # network layers setting
-        self.features = make_layers(cfg[cfg_key], True)
+        self.features = make_layers(cfg[config_idx], True)
 
         self.disc = nn.Linear(512, output_k['disc'])
         self.cont = nn.Linear(512, output_k['cont'])

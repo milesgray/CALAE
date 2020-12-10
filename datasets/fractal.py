@@ -85,6 +85,8 @@ def make_fractal_alae_dataloader(
         drop_last=True,
     )
 
+# ------------------------------------------------------------------------------------------------------------------
+# Custom Fractal Images dataset with contrastive style batches of the original image and then an augmented version
 
 # ------------------------------------------------------------------------------------------------------------------
 # Custom Fractal Images dataset with high resolution images.  Must apply crop and also return the coordinates of
