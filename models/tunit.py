@@ -447,8 +447,8 @@ cfg = {
 
 
 class GuidingNet(nn.Module):
-    def __init__(self, img_size=64, output_k={'cont': 128, 'disc': 10}):
-        super(GuidingNet, self, config_idx=0).__init__()        
+    def __init__(self, img_size=64, output_k={'cont': 128, 'disc': 10}, config_idx=0):
+        super(GuidingNet, self).__init__()        
         # network layers setting
         self.features = make_layers(cfg[config_idx], True)
 
