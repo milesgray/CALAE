@@ -215,9 +215,8 @@ class AdaIN2d(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(num_features=' + str(self.num_features) + ')'
-
-# DISCRIMINATOR
-# 
+##############################################################################################
+################################################### DISCRIMINATOR
 class Discriminator(nn.Module):
     """Discriminator: (image x, domain y) -> (logit out)."""
     def __init__(self, image_size=256, num_domains=2, max_conv_dim=1024):
@@ -285,11 +284,8 @@ def weights_init(init_type='gaussian'):
                 init.constant_(m.bias.data, 0.0)
     return init_fun
 
-
-# GENERATOR
-
-
-
+#####################################################################################
+###################################### GENERATOR
 class Generator(nn.Module):   
     def __init__(self, img_size=128, sty_dim=64, n_res=2, use_sn=False):
         super(Generator, self).__init__()
@@ -439,9 +435,6 @@ def get_num_adain_params(model):
 
 ###################################################################################
 ### GUIDING NET
-
-
-
 cfg = {
     'vgg11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
     'vgg13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
@@ -454,6 +447,7 @@ cfg = {
 class GuidingNet(nn.Module):
     def __init__(self, img_size=64, output_k={'cont': 128, 'disc': 10}):
         super(GuidingNet, self).__init__()
+        cfg_key = list(cfg.keys())[(img_size//64) - 1]
         # network layers setting
         self.features = make_layers(cfg['vgg11'], True)
 
