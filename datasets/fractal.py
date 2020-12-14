@@ -311,7 +311,7 @@ def make_fractal_TUNIT_dataloader(
         transform_list.append(transforms.Resize((image_size, image_size)))
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(get_blur(p=0.6, s=s, kernel=17))
+    transform_list.append(get_blur(p=0.6, s=s, kernel_size=17))
     transform_list.append(get_color_distortion(s=0.6, use_grayscale=use_grayscale))
     if isinstance(crop_mode, int):
         transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
@@ -333,7 +333,7 @@ def make_fractal_TUNIT_dataloader(
         elif crop_mode == "center":
             crop_list.append(transforms.CenterCrop(crop_size))
         crop_list.append(transforms.Resize((image_size, image_size)))
-    crop_list.append(get_blur(p=0.3, s=s, kernel=24))
+    crop_list.append(get_blur(p=0.3, s=s, kernel_size=24))
     if isinstance(crop_mode, int):
         crop_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
         crop_list.append(BuildOutput(mean, std, super_res=True))

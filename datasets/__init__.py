@@ -4,3 +4,5 @@ from .fractal import make_fractal_alae_dataloader
 from .fractal import make_fractal_clr_dataloader
 from .fractal import make_fractal_clr_sr_dataloader
 from .fractal import make_fractal_TUNIT_dataloader
+
+from .celeba import CelebA, make_celeba_dataloader
