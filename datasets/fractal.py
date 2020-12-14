@@ -117,8 +117,8 @@ class FractalLabel(Dataset):
 # ------------------------------------------------------------------------------------------------------------------
 # Prepares a set of transformations that makes many crops of a certain scale square area randomly from each image
 # in a batch, effectively making a much larger dataset than individual image count suggests. Also returns the coordinates
-# of each crop. Results in a 4-d tensor [N, C, H, W] with N being number of crops
-# ------------------------------------------------------------------------------------------------------------------
+# of each crop.----- Results in a 4-d tensor [N, C, H, W] with N being number of crops
+# -------------------------------------------------------------------------------------------------------------
 def make_fractal_clr_dataloader(
     dataset,
     batch_size,
@@ -263,4 +263,100 @@ class ContrastiveMultiCropDataset(datasets.ImageFolder):
         if self.return_index:
             return index, multi_crops
         return multi_crops
+###############################################
+## TUNIT Style, Basic Contrastive output but includes label and coordinates #######
+###########################################
 
+class FractalContrastive(Dataset):
+    def __init__(self, path="/content/all/", part="train"):
+        self.all_data = all_paths = [
+            str(p.absolute()) for p in pathlib.Path(path).glob("*")
+        ]
+        self.total = len(self.all_data)
+        if part == "train":
+            self.data = self.all_data[: int(self.total * 0.9)]
+        elif part == "all":
+            self.data = self.all_data
+        else:
+            self.data = self.all_data[int(self.total * 0.9) :]
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        raw_img = Image.open(self.data[idx]).convert("RGB")
+        #return (self.crop(raw_img), self.transform(raw_img.copy()))
+        label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
+        result, original, coords = self.transform(raw_img)        
+        transform_output = (result, original, coords, label)
+        result, original, coords = self.crop(raw_img)
+        crop_output = (result, original, coords, label)
+
+        return transform_output, crop_output
+
+def make_fractal_TUNIT_dataloader(
+    dataset,
+    batch_size,
+    image_size=4,
+    crop_size=512,
+    num_workers=3,
+    use_grayscale=False,
+    crop_mode="random",
+    mean=(0.5, 0.5, 0.5),
+    std=(0.5, 0.5, 0.5),
+):
+    transform_list = []
+    if isinstance(crop_mode, str):
+        if crop_mode == "random":
+            transform_list.append(
+                transforms.RandomCrop(
+                    crop_size, pad_if_needed=True, padding_mode="symmetric"
+                )
+            )
+        elif crop_mode == "center":
+            transform_list.append(transforms.CenterCrop(crop_size))
+        transform_list.append(transforms.Resize((image_size, image_size)))
+    transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
+    transform_list.append(transforms.RandomVerticalFlip(p=0.5))
+    transform_list.append(
+        transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)
+    )
+    if use_grayscale:
+        transform_list.append(transforms.RandomGrayscale(p=0.1))
+    if isinstance(crop_mode, int):
+        transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
+        transform_list.append(BuildOutput(mean, std, super_res=True))
+    else:
+        transform_list.append(transforms.ToTensor())
+        transform_list.append(transforms.Normalize(mean, std, inplace=True))
+
+    dataset.transform = transforms.Compose(transform_list)
+
+    crop_list = []
+    if isinstance(crop_mode, str):
+        if crop_mode == "random":
+            crop_list.append(
+                transforms.RandomCrop(
+                    crop_size, pad_if_needed=True, padding_mode="symmetric"
+                )
+            )
+        elif crop_mode == "center":
+            crop_list.append(transforms.CenterCrop(crop_size))
+    crop_list.append(transforms.Resize((image_size, image_size)))
+    if isinstance(crop_mode, int):
+        crop_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
+        crop_list.append(BuildOutput(mean, std, super_res=True))
+    else:
+        crop_list.append(transforms.ToTensor())
+        crop_list.append(transforms.Normalize(mean, std, inplace=True))
+
+    dataset.crop = transforms.Compose(crop_list)
+
+    return DataLoader(
+        dataset,
+        shuffle=True,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        drop_last=True,
+        pin_memory=True,
+    )
