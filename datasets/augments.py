@@ -125,8 +125,8 @@ class MultiCrop:
                 ratio_r = total_h / self.w
             # do resize based on if either PIL or Tensor
             if _is_pil_image(x):                
-                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
-                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
+                x = x.resize((int(int(self.w * ratio_r) + pad_amount * ratio_w),
+                             int(int(self.h * ratio_r) + pad_amount * ratio_h))
                             )
                 # get new size
                 self.h, self.w = _get_image_size(x)
