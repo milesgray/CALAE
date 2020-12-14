@@ -15,7 +15,7 @@ try:
 except ImportError:
     accimage = None
 
-from .augments import MultiCrop, BuildOutput, RandomGaussianBlur, get_color_distortion
+from .augments import MultiCrop, BuildOutput, get_blur, get_color_distortion
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------
@@ -68,11 +68,7 @@ def make_fractal_alae_dataloader(
     transform_list.append(transforms.Resize((image_size, image_size)))
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(
-        transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)
-    )
-    if use_grayscale:
-        transform_list.append(transforms.RandomGrayscale(p=0.1))
+    transform_list.append(get_color_distortion(s=0.2, use_grayscale=use_grayscale))
     transform_list.append(transforms.ToTensor())
     transform_list.append(transforms.Normalize(mean, std, inplace=True))
 
@@ -132,10 +128,7 @@ def make_fractal_clr_dataloader(
     transform_list = []
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(
-        transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)
-    )
-    # transform_list.append(transforms.RandomGrayscale(p=0.1))
+    transform_list.append(get_color_distortion(s=0.2, use_grayscale=False))    
     transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
     transform_list.append(BuildOutput(mean, std))
 
@@ -195,9 +188,7 @@ def make_fractal_clr_sr_dataloader(
     transform_list = []
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(
-        transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)
-    )    
+    transform_list.append((transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)], 0.7)
     transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
     transform_list.append(BuildOutput(mean, std, super_res=True))
 
@@ -233,13 +224,11 @@ class ContrastiveMultiCropDataset(datasets.ImageFolder):
         self.use_pad = use_pad
 
         trans = []
-        color_transform = transforms.Compose(
-            [get_color_distortion(), RandomGaussianBlur()]
-        )
+        color_transform = transforms.Compose([get_color_distortion(), get_blur()])
 
         for i in range(count):
             randomcrop = transforms.RandomCrop(crop_size)
-            resizecrop = MultiCropV2(self.resize_size)
+            resizecrop = MultiCrop(self.resize_size)
             trans.extend(
                 [
                     transforms.Compose(
@@ -322,10 +311,8 @@ def make_fractal_TUNIT_dataloader(
         transform_list.append(transforms.Resize((image_size, image_size)))
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(RandomGaussianBlur(p=0.6, window=int(17 * s)))
-    transform_list.append(transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s))
-    if use_grayscale:
-        transform_list.append(transforms.RandomGrayscale(p=0.1))
+    transform_list.append(get_blur(p=0.6, s=s, kernel=17))
+    transform_list.append(get_color_distortion(s=0.6, use_grayscale=use_grayscale))
     if isinstance(crop_mode, int):
         transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
         transform_list.append(BuildOutput(mean, std, super_res=True))
@@ -346,7 +333,7 @@ def make_fractal_TUNIT_dataloader(
         elif crop_mode == "center":
             crop_list.append(transforms.CenterCrop(crop_size))
         crop_list.append(transforms.Resize((image_size, image_size)))
-    crop_list.append(RandomGaussianBlur(p=0.7, window=int(s * 24)))
+    crop_list.append(get_blur(p=0.3, s=s, kernel=24))
     if isinstance(crop_mode, int):
         crop_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
         crop_list.append(BuildOutput(mean, std, super_res=True))

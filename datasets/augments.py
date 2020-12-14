@@ -10,6 +10,7 @@ from torchvision import transforms
 import torchvision.datasets as datasets
 import torchvision.transforms.functional as TF
 from PIL import Image
+import cv2
 try:
     import accimage
 except ImportError:
@@ -243,11 +244,17 @@ class RandomGaussianBlur:
         sigma = np.random.rand() * 1.9 + 0.1
         return cv2.GaussianBlur(np.asarray(img), (self.window, self.window), sigma)
 
+def get_blur(p=0.5, s=1.0, kernel_size=23, sigma=(0.1,2.0)):
+    blur = transforms.GaussianBlur(int(kernel_size*s), sigma=sigma)
+    rnd_blur = transforms.RandomApply([blur], p=p)
+    return rnd_blur
 
-def get_color_distortion(s=1.0):
+def get_color_distortion(s=1.0, use_grayscale=True):
     # s is the strength of color distortion.
     color_jitter = transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
-    rnd_color_jitter = transforms.RandomApply([color_jitter], p=0.8)
-    rnd_gray = transforms.RandomGrayscale(p=0.2)
-    color_distort = transforms.Compose([rnd_color_jitter, rnd_gray])
+    transform_list = []
+    transform_list.append(transforms.RandomApply([color_jitter], p=0.8))
+    if use_grayscale:
+        transform_list.append(transforms.RandomGrayscale(p=0.2))
+    color_distort = transforms.Compose(transform_list)
     return color_distort
