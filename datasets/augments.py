@@ -123,24 +123,20 @@ class MultiCrop:
                 ratio_h = self.h / self.w
                 ratio_w = 1
                 ratio_r = total_h / self.w
+            resize_width = int(int(self.w * ratio_r) + pad_amount * ratio_w)
+            resize_height = int(int(self.h * ratio_r) + pad_amount * ratio_h)
             # do resize based on if either PIL or Tensor
-            if _is_pil_image(x):                
-                x = x.resize((int(int(self.w * ratio_r) + pad_amount * ratio_w),
-                             int(int(self.h * ratio_r) + pad_amount * ratio_h))
-                            )
+            if _is_pil_image(x):
+                x = x.resize((resize_width,
+                              resize_height))
                 # get new size
                 self.h, self.w = _get_image_size(x)
-                return x
             elif isinstance(img, torch.Tensor) and img.dim() > 2:
-                x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
-                             int(int(self.h * ratio_r) + pad_amount * ratio_h)
-                            )
+                x = x.resize(resize_width,
+                             resize_height)
                 # get new size
-                self.h, self.w = _get_image_size(x)
-                return x
-            else:
-                # Numpy? shouldn't happen...
-                return x
+                self.h, self.w = _get_image_size(x)            
+            return x
         else:
             # image is large enough already
             return x
