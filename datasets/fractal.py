@@ -188,7 +188,7 @@ def make_fractal_clr_sr_dataloader(
     transform_list = []
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append((transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)], 0.7)
+    transform_list.append(transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)], 0.7))
     transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
     transform_list.append(BuildOutput(mean, std, super_res=True))
 
