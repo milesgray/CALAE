@@ -267,7 +267,7 @@ class ContrastiveMultiCropDataset(datasets.ImageFolder):
 ## TUNIT Style, Basic Contrastive output but includes label and coordinates #######
 ###########################################
 
-class FractalContrastive(Dataset):
+class FractalTUNITContrastive(Dataset):
     def __init__(self, path="/content/all/", part="train"):
         self.all_data = all_paths = [
             str(p.absolute()) for p in pathlib.Path(path).glob("*")
