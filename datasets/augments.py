@@ -35,7 +35,7 @@ def _get_image_size(img):
     else:
         raise TypeError("Unexpected type {}".format(type(img)))
 
-
+# Custom Augment Classes that can be put into Compose
 class MultiCrop:   
     def __init__(self, crop_size, resize_size, 
                  count=5,
@@ -184,7 +184,6 @@ class MultiCrop:
         return (x1, y1, x2, y2, h, w)
 
 
-
 class BuildOutput:
     def __init__(self, mean, std, super_res=False):
         self.mean = mean
@@ -229,12 +228,20 @@ class BuildOutput:
 
 
 class RandomGaussianBlur:
-    def __call__(self, img):
-        do_it = np.random.rand() > 0.5
-        if not do_it:
+    def __init__(self, p=0.5, window=23):
+        self.window = window
+        if isinstance(p, int):            
+            self.p = p / 100 if p < 100 else 1.0
+        elif isinstance(p, float):
+            self.p = p
+        else:
+            self.p = float(p)
+
+    def __call__(self, img):        
+        if np.random.rand() < self.p:
             return img
         sigma = np.random.rand() * 1.9 + 0.1
-        return cv2.GaussianBlur(np.asarray(img), (23, 23), sigma)
+        return cv2.GaussianBlur(np.asarray(img), (self.window, self.window), sigma)
 
 
 def get_color_distortion(s=1.0):

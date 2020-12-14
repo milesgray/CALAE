@@ -285,11 +285,13 @@ class FractalTUNITContrastive(Dataset):
 
     def __getitem__(self, idx):
         raw_img = Image.open(self.data[idx]).convert("RGB")
-        #return (self.crop(raw_img), self.transform(raw_img.copy()))
+        # Get Augmented version of image
+        result, original, coords = self.transform(raw_img)
         label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
-        result, original, coords = self.transform(raw_img)        
         transform_output = (result, original, coords, label)
+        # Get version of image that is only cropped, no other augs
         result, original, coords = self.crop(raw_img)
+        label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
         crop_output = (result, original, coords, label)
 
         return transform_output, crop_output
@@ -300,11 +302,13 @@ def make_fractal_TUNIT_dataloader(
     image_size=4,
     crop_size=512,
     num_workers=3,
+    aug_strength=0.8,
     use_grayscale=False,
     crop_mode="random",
     mean=(0.5, 0.5, 0.5),
     std=(0.5, 0.5, 0.5),
 ):
+    s = aug_strength
     transform_list = []
     if isinstance(crop_mode, str):
         if crop_mode == "random":
@@ -318,9 +322,8 @@ def make_fractal_TUNIT_dataloader(
         transform_list.append(transforms.Resize((image_size, image_size)))
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(
-        transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)
-    )
+    transform_list.append(RandomGaussianBlur(p=0.6, window=int(17 * s)))
+    transform_list.append(transforms.ColorJitter(0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s))
     if use_grayscale:
         transform_list.append(transforms.RandomGrayscale(p=0.1))
     if isinstance(crop_mode, int):
@@ -342,7 +345,8 @@ def make_fractal_TUNIT_dataloader(
             )
         elif crop_mode == "center":
             crop_list.append(transforms.CenterCrop(crop_size))
-    crop_list.append(transforms.Resize((image_size, image_size)))
+        crop_list.append(transforms.Resize((image_size, image_size)))
+    crop_list.append(RandomGaussianBlur(p=0.7, window=int(s * 24)))
     if isinstance(crop_mode, int):
         crop_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
         crop_list.append(BuildOutput(mean, std, super_res=True))
