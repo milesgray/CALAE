@@ -5,6 +5,9 @@ import math
 
 from .factory import Factory
 
+__all__ = ["Shuffle", "CBR", "CBA", "BR", "CB", "C", "CDilated", "CDilatedB", \
+           "EffDWSepConv", "StridedEffDWise", "EfficientPyrPool"]
+
 def activation_fn(features, name='prelu', inplace=True):
     '''
     :param features: # of features (only for PReLU)
@@ -41,7 +44,6 @@ class Shuffle(nn.Module):
         x = x.view(batchsize, -1, height, width)
         return x
 
-
 class CBR(nn.Module):
     '''
     This class defines the convolution layer with batch normalization and PReLU activation
@@ -70,7 +72,6 @@ class CBR(nn.Module):
         output = self.bn(output)
         output = self.act(output)
         return output
-
 
 class CBA(nn.Module):
     '''
@@ -123,7 +124,6 @@ class BR(nn.Module):
         output = self.act(output)
         return output
 
-
 class CB(nn.Module):
     '''
        This class groups the convolution and batch normalization
@@ -151,7 +151,6 @@ class CB(nn.Module):
         output = self.bn(output)
         return output
 
-
 class C(nn.Module):
     '''
     This class is for a convolutional layer.
@@ -176,7 +175,6 @@ class C(nn.Module):
         '''
         output = self.conv(input)
         return output
-
 
 class CDilated(nn.Module):
     '''

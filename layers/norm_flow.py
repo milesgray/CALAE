@@ -281,52 +281,6 @@ class CouplingLayer(nn.Module):
             s = torch.exp(-log_s)
             return (inputs - t) * s, -log_s.sum(-1, keepdim=True)
 
-
-class FlowSequential(nn.Sequential):
-    """ A sequential container for flows.
-    In addition to a forward pass it implements a backward pass and
-    computes log jacobians.
-    """
-
-    def forward(self, inputs, cond_inputs=None, mode='direct', logdets=None):
-        """ Performs a forward or backward pass for flow modules.
-        Args:
-            inputs: a tuple of inputs and logdets
-            mode: to run direct computation or inverse
-        """
-        self.num_inputs = inputs.size(-1)
-
-        if logdets is None:
-            logdets = torch.zeros(inputs.size(0), 1, device=inputs.device)
-
-        assert mode in ['direct', 'inverse']
-        if mode == 'direct':
-            for module in self._modules.values():
-                inputs, logdet = module(inputs, cond_inputs, mode)
-                logdets += logdet
-        else:
-            for module in reversed(self._modules.values()):
-                inputs, logdet = module(inputs, cond_inputs, mode)
-                logdets += logdet
-
-        return inputs, logdets
-
-    def log_probs(self, inputs, cond_inputs = None):
-        u, log_jacob = self(inputs, cond_inputs)
-        log_probs = (-0.5 * u.pow(2) - 0.5 * math.log(2 * math.pi)).sum(
-            -1, keepdim=True)
-        return (log_probs + log_jacob).sum(-1, keepdim=True)
-
-    def sample(self, num_samples=None, noise=None, cond_inputs=None):
-        if noise is None:
-            noise = torch.Tensor(num_samples, self.num_inputs).normal_()
-        device = next(self.parameters()).device
-        noise = noise.to(device)
-        if cond_inputs is not None:
-            cond_inputs = cond_inputs.to(device)
-        samples = self.forward(noise, cond_inputs, mode='inverse')[0]
-        return samples                                
-
 class PlanarTransform(nn.Module):
     def __init__(self, init_sigma=0.01):
         super().__init__()
@@ -357,7 +311,6 @@ class PlanarTransform(nn.Module):
         sum_log_abs_det_jacobians = sum_log_abs_det_jacobians + log_abs_det_jacobian
 
         return f_z, sum_log_abs_det_jacobians
-
 
 class AffineTransform(nn.Module):
     def __init__(self, learnable=False):
@@ -395,7 +348,6 @@ class Actnorm(nn.Module):
 
     def inverse(self, z):
         return z * self.scale + self.bias, self.scale.abs().log().sum() * z.shape[2] * z.shape[3]
-
 
 class Invertible1x1Conv(nn.Module):
     """ Invertible 1x1 convolution layer; cf Glow section 3.2 """
@@ -443,7 +395,6 @@ class Invertible1x1Conv(nn.Module):
             logdet = - torch.slogdet(self.w)[-1] * H * W
 
         return F.conv2d(z, w_inv.view(C,C,1,1)), logdet
-
 
 class AffineCoupling(nn.Module):
     """ Affine coupling layer; cf Glow section 3.3; RealNVP figure 2 """
@@ -498,7 +449,6 @@ class AffineCoupling(nn.Module):
 
         return x, logdet
 
-
 class Squeeze(nn.Module):
     """ RealNVP squeezing operation layer (cf RealNVP section 3.6; Glow figure 2b):
     For each channel, it divides the image into subsquares of shape 2 × 2 × c, then reshapes them into subsquares of 
@@ -520,7 +470,6 @@ class Squeeze(nn.Module):
         x = x.reshape(B, C//4, 2*H, 2*W)        # aggregate channel dim factors into spatial dims
         return x
 
-
 class Split(nn.Module):
     """ Split layer; cf Glow figure 2 / RealNVP figure 4b
     Based on RealNVP multi-scale architecture: splits an input in half along the channel dim; half the vars are
@@ -539,7 +488,6 @@ class Split(nn.Module):
         x2, logdet = self.gaussianize.inverse(x1, z2)
         x = torch.cat([x1, x2], dim=1)  # cat along channel dim
         return x, logdet
-
 
 class Gaussianize(nn.Module):
     """ Gaussianization per ReanNVP sec 3.6 / fig 4b -- at each step half the variables are directly modeled as Gaussians.
@@ -571,7 +519,6 @@ class Gaussianize(nn.Module):
         logdet = logs.sum([1,2,3])
         return x2, logdet
 
-
 class Preprocess(nn.Module):
     def __init__(self):
         super().__init__()
@@ -588,7 +535,52 @@ class Preprocess(nn.Module):
 # Container layers
 # --------------------
 
-class FlowSequential(nn.Sequential):
+class FlowSequentialV1(nn.Sequential):
+    """ A sequential container for flows.
+    In addition to a forward pass it implements a backward pass and
+    computes log jacobians.
+    """
+
+    def forward(self, inputs, cond_inputs=None, mode='direct', logdets=None):
+        """ Performs a forward or backward pass for flow modules.
+        Args:
+            inputs: a tuple of inputs and logdets
+            mode: to run direct computation or inverse
+        """
+        self.num_inputs = inputs.size(-1)
+
+        if logdets is None:
+            logdets = torch.zeros(inputs.size(0), 1, device=inputs.device)
+
+        assert mode in ['direct', 'inverse']
+        if mode == 'direct':
+            for module in self._modules.values():
+                inputs, logdet = module(inputs, cond_inputs, mode)
+                logdets += logdet
+        else:
+            for module in reversed(self._modules.values()):
+                inputs, logdet = module(inputs, cond_inputs, mode)
+                logdets += logdet
+
+        return inputs, logdets
+
+    def log_probs(self, inputs, cond_inputs = None):
+        u, log_jacob = self(inputs, cond_inputs)
+        log_probs = (-0.5 * u.pow(2) - 0.5 * math.log(2 * math.pi)).sum(
+            -1, keepdim=True)
+        return (log_probs + log_jacob).sum(-1, keepdim=True)
+
+    def sample(self, num_samples=None, noise=None, cond_inputs=None):
+        if noise is None:
+            noise = torch.Tensor(num_samples, self.num_inputs).normal_()
+        device = next(self.parameters()).device
+        noise = noise.to(device)
+        if cond_inputs is not None:
+            cond_inputs = cond_inputs.to(device)
+        samples = self.forward(noise, cond_inputs, mode='inverse')[0]
+        return samples                                
+
+class FlowSequentialV2(nn.Sequential):
     """ Container for layers of a normalizing flow """
     def __init__(self, *args, **kwargs):
         self.checkpoint_grads = kwargs.pop('checkpoint_grads', None)
@@ -608,14 +600,12 @@ class FlowSequential(nn.Sequential):
             sum_logdets = sum_logdets + logdet
         return z, sum_logdets
 
-
-class FlowStep(FlowSequential):
+class FlowStep(FlowSequentialV2):
     """ One step of Glow flow (Actnorm -> Invertible 1x1 conv -> Affine coupling); cf Glow Figure 2a """
     def __init__(self, n_channels, width, lu_factorize=False):
         super().__init__(Actnorm(param_dim=(1,n_channels,1,1)),
                          Invertible1x1Conv(n_channels, lu_factorize),
                          AffineCoupling(n_channels, width))
-
 
 class FlowLevel(nn.Module):
     """ One depth level of Glow flow (Squeeze -> FlowStep x K -> Split); cf Glow figure 2b """

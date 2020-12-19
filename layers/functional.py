@@ -6,6 +6,8 @@ Script provides functional interface for Mish activation function.
 import torch
 import torch.nn.functional as F
 
+__all__ = ["mish"]
+
 @torch.jit.script
 def mish(input):
     '''

@@ -2,6 +2,8 @@ import torch
 from torch import nn
 from .bicubic import BicubicDownSample
 
+__all__ = ["LossBuilder"]
+
 class LossBuilder(torch.nn.Module):
     def __init__(self, ref_im, loss_str, eps):
         super(LossBuilder, self).__init__()

@@ -4,6 +4,8 @@ import torch.nn as nn
 from .scaled import ScaledConv2d 
 from CALAE.models import stylegan2
 
+__all__ = ["FromRGB", "ToRGB", "ToRGB_StyleGAN2"]
+
 # ------------------------------------------------------------------------------------------------------------------
 # Project from RGB space to Feature space
 # Entry point for sending an image into the network

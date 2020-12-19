@@ -3,6 +3,7 @@ import torch.nn.parallel
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+__all__ = ["Downsample", "Downsample1D"]
 
 class Downsample(nn.Module):
     def __init__(self, pad_type='reflect', filt_size=3, stride=2, channels=None, pad_off=0):

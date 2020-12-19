@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+__all__ = ["MaskedLinear", "MADESplit", "MADE"]
 
 def get_mask(in_features, out_features, in_flow_features, mask_type=None):
     """
