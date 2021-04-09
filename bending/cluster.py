@@ -123,7 +123,7 @@ def get_clusters_from_generated_average(args, g_ema, device, mean_latent, t_dict
                 classifier.to(device)
                 layer_activation_maps = activation_maps[index]
                 a_map_array = list(torch.split(layer_activation_maps,1,1))
-                for j, map in enumerate(a_map_array):                  
+                for j, map in enumerate(a_map_array):
                     map = map.to(device)
                     feat_vec, class_prob = classifier(map)
                     normalised_feat_vec = feat_vec / args.num_samples

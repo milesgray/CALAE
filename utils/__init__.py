@@ -26,3 +26,31 @@ def clean(string_value):
         str: The original value, but lowercase and without spaces, underscores or dashes.
     """
     return string_value.lower().strip().replace("_","").replace("-","").replace(" ","")
+
+def summary(model, logger=print):
+    linfo_name = "LAYER NAME"
+    linfo_shape = "LAYER SHAPE"
+    linfo_params = "TOTAL PARAMS"
+    linfo_mean = "MEAN"
+    linfo_var = "VARIANCE"
+    linfo_norm = "NORM"
+    linfo_nansum = "NANSUM"
+    logger(f"[{linfo_name:45s}]\t{linfo_shape:25s}\t|{linfo_params:18s}|{linfo_mean:8s}|{linfo_var:8s}|{linfo_norm:8s}|{linfo_nansum:8s}")
+    for layer in list(model.keys()):
+        if "opt" in layer: continue
+        try:
+            real_layer = model[layer]
+            if isinstance(real_layer, (dict, list)):
+                summary(real_layer)
+            else:
+                linfo = munch.DefaultMunch()
+                linfo.shape = real_layer.shape
+                linfo.name = layer
+                linfo.params = linfo.shape.numel()
+                linfo.mean = float(real_layer.mean().cpu().numpy())
+                linfo.var = float(real_layer.var().cpu().numpy())
+                linfo.norm = float(real_layer.norm().cpu().numpy())
+                linfo.nansum = float(real_layer.nansum().cpu().numpy())
+                logger(f"[{linfo.name:45s}]\t{str(linfo.shape):25s}\t|{linfo.params:17d} |{linfo.mean:5.7f} |{linfo.var:5.7f} |{linfo.norm:5.7f} |{linfo.nansum:5.7f} ")
+        except:
+            logger(f"[{linfo.name:45s}]\t{str(linfo.shape):25s}\t|{linfo.params:17d}")
