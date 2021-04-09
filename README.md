@@ -4,6 +4,10 @@
 
 This is a set of experiments surrounding an image/video dataset of highly complex "fractal" patterns that were originally made using a variety of actual fractal formulas that the I discovered at a time when I had very little mathmematical training.  They are mostly highly parameterized mixtures of the so-called "Kali" set and Mandlebrot/Julia sets, which is where the I started from. However, it seems as though these formula produce significantly more diverse patterns than any other single formula varients of Julia sets that I have seen, though until recently I had not rigorously looked into the established mathematical literature. 
 
+## NOTE
+
+**There is a colab notebook that ties this code together and provides an example of usage (I need to clean all passwords/tokens and make sure it still works). This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution.**
+
 ## Julia Sets
 
 [This](http://www.juliasets.dk/Pictures_of_Julia_and_Mandelbrot_sets.htm) is a very good math-based walkthrough of the theories behind generating fractal imagery from Julia set based equations using computers. My ultimate goal is to fully merge the fractal distribution as a prior for a deep AutoEncoder in place of the usual gaussian distribution. 
