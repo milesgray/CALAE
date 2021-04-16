@@ -4,9 +4,27 @@
 
 This is a set of experiments surrounding an image/video dataset of highly complex "fractal" patterns that were originally made using a variety of actual fractal formulas that the I discovered at a time when I had very little mathmematical training.  They are mostly highly parameterized mixtures of the so-called "Kali" set and Mandlebrot/Julia sets, which is where the I started from. However, it seems as though these formula produce significantly more diverse patterns than any other single formula varients of Julia sets that I have seen, though until recently I had not rigorously looked into the established mathematical literature. 
 
-## NOTE
+## Current Status
+
+### NOTE
 
 **There is a colab notebook that ties this code together and provides an example of usage - there is now a copy of the notebook in this repo, train_alae.ipynb. This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution. This work was done prior to the rise of fourier layers and SIREN style coordinate translation/periodic activations or implicit RGB neural functions and neural radience fields.**
+
+### Results
+#### Background
+Unfortunately, while running these experiments, I realized the importance of preserving the exact codebase and data used in each experiment.  With an external library being downloaded to google colab and then potentially edited within the colab instance, there is no way to reproduce most of the 400+ Comet.ml experiments that I had run.  While I ended up with a fairly good system of ensuring reproducability, I ended up moving on to the new wave of NeRF/SIREN inspired image representations and left this codebase's experiment notebook in a state of suck. While debugging it recently to get an example working, I just replaced many of the losses with one I knew would technically work so I could debug the rest of the training process (a naive FFT based loss). This provides a good example of how a failure case looks like after 16 hours of training (as an aside, the data pipeline is horribly slow). I've also included one of the best results I had gotten, pulled from the comet.ml experiment - I will try to piece together the losses used over the next couple days, but I am fairly sure the contrastive loss that hasn't been debugged yet was a major factor.
+
+#### Examples
+
+The following are some images that show the current fail results along with the closest I had previously gotten to having this model capture the high frequency details of the highly challenging fractal dataset. Output images are arranged in 4 columns - **real samples**, **reconstruction of real**, **fake samples**, **reconstruction of fake** - the exact number of samples depends on the resolution (which determines the batch size). Loss history plots include all of the many losses used (one could easily argue too many), within the range 0-2... the names listed are generic and indicate the algorithmic 'slot' the loss fits into, but part of the design of the framework enabled easily swappable underlying loss calculations within each slot.  In other words, the 'G' loss in the failure case is most likely not the same exact calculation as the 'G' in the success case.
+
+##### Failure Case - 128x128 px final output
+![alt-text-0](example_results/bad_128x128.png "failure case output")
+![alt-text-1](example_results/bad_losses.png "failure case loss history")
+
+##### 'Success' Case - 64x64 final output
+![alt-text-2](example_results/good_64x64.png "success case output")
+![alt-text-3](example_results/good_losses.png "success case loss history")
 
 ## Julia Sets
 
@@ -16,7 +34,7 @@ This is a set of experiments surrounding an image/video dataset of highly comple
 
 **Authors**: Grigorii Sotnikov, Vladimir Gogoryan, Dmitry Smorchkov and Ivan Vovk (all have equal contribution)
 
-This repository was originally a fork of the third party reimplemntation fo ALAE by the above authors. I have since then scoured the web to find all of the latest tricks and strategies that may be helpful to modeling a generative network that can reproduce fractal imagery.  Currently, at the core of the algorithm is still an ALAE and it seems like an appropriate starting point.  
+This repository was originally a fork of the [third party reimplemntation](https://github.com/ivanvovk/controllable-face-generation/tree/alae-implementation) of ALAE by the above authors. I have since then scoured the web to find all of the latest tricks and strategies that may be helpful to modeling a generative network that can reproduce fractal imagery.  Currently, at the core of the algorithm is still an ALAE and it seems like an appropriate starting point.  
 
 ## Generative Network Overview
 
