@@ -1629,8 +1629,11 @@ class GeneratorBlock(nn.Module):
                 x = self.blur_affine(x)
 
             
-            if self.use_coord and bbox is not None:
-                x = self.conv1(x, bbox)
+            if self.use_coord:
+                if bbox is not None:
+                    x = self.conv1(x, bbox)
+                else:
+                    raise ValueError("Must pass 'bbox' when using coord conv ('use_coord' = True)")
             else:
                 x = self.conv1(x)
             x = self.attn(x)
@@ -1863,7 +1866,8 @@ class Encoder(nn.Module):
         encoder_blocks = []
         from_rgb_blocks = []
         attn_blocks = []
-        coord_blocks = []
+        if use_coord:
+            coord_blocks = []
         if learn_blend: 
             self.blend_gains = []
         self.max_scale = 0
