@@ -20,11 +20,11 @@ The following are some images that show the current fail results along with the 
 
 ##### Failure Case - 128x128 px final output
 ![alt-text-0](example_results/bad_128x128.png "failure case output")
-![alt-text-1](example_results/bad_losses.png "failure case loss history")
+![alt-text-1](example_results/bad_losses.jpeg "failure case loss history")
 
 ##### 'Success' Case - 64x64 final output
 ![alt-text-2](example_results/good_64x64.png "success case output")
-![alt-text-3](example_results/good_losses.png "success case loss history")
+![alt-text-3](example_results/good_losses.jpeg "success case loss history")
 
 ## Julia Sets
 
