@@ -6,7 +6,7 @@ This is a set of experiments surrounding an image/video dataset of highly comple
 
 ## NOTE
 
-**There is a colab notebook that ties this code together and provides an example of usage (I need to clean all passwords/tokens and make sure it still works). This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution. This work was done prior to the rise of fourier layers and SIREN style coordinate translation.**
+**There is a colab notebook that ties this code together and provides an example of usage - there is now a copy of the notebook in this repo, train_alae.ipynb. This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution. This work was done prior to the rise of fourier layers and SIREN style coordinate translation/periodic activations or implicit RGB neural functions and neural radience fields.**
 
 ## Julia Sets
 
