@@ -36,18 +36,21 @@ class Fractal(Dataset):
         else:
             self.data = self.all_data[int(self.total * self.split) :]
         if self.cache:
+            print(f"Loading {len(self.data)} images into memory...")
             imgs = []
             for p in self.data:
-                imgs.append(Image.open(p))
-
-
+                imgs.append(Image.open(p).convert('RGB'))
+            self.data = imgs
+            print(f"Cache created with {len(self.data)} elements")
+        else:
+            print(f"Loading images from disk during training")
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         if self.cache:
-            return self.transform(self.data[idx]).convert('RGB')
+            return self.transform(self.data[idx])
         else:
             return self.transform(Image.open(self.data[idx]).convert("RGB"))
 
