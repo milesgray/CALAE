@@ -23,21 +23,33 @@ from .augments import MultiCrop, BuildOutput, get_blur, get_color_distortion
 # Custom Fractal Images dataset with high resolution images.  Must apply crop to use.
 # ------------------------------------------------------------------------------------------------------------------
 class Fractal(Dataset):
-    def __init__(self, path="/content/all/", part="train"):
+    def __init__(self, path="/content/all/", part="train", train_split=0.9, cache=False):
+        self.cache = cache
         self.all_data = all_paths = [
             str(p.absolute()) for p in pathlib.Path(path).glob("*")
         ]
         self.total = len(self.all_data)
+        self.split = train_split
         if part == "train":
-            self.data = self.all_data[: int(self.total * 0.9)]
+            self.data = self.all_data[: int(self.total * self.split)]
+            
         else:
-            self.data = self.all_data[int(self.total * 0.9) :]
+            self.data = self.all_data[int(self.total * self.split) :]
+        if self.cache:
+            imgs = []
+            for p in self.data:
+                imgs.append(Image.open(p))
+
+
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.transform(Image.open(self.data[idx]).convert("RGB"))
+        if self.cache:
+            return self.transform(self.data[idx]).convert('RGB')
+        else:
+            return self.transform(Image.open(self.data[idx]).convert("RGB"))
 
 
 # ------------------------------------------------------------------------------------------------------------------
