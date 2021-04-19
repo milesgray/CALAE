@@ -1,17 +1,21 @@
-# Contrastive Adversarial Latent AutoEncoder (CALAE) Implementation
+# Contrastive Adversarial Latent AutoEncoder (CALAE)
 
 **Author**: Miles Gray
 
-This is a set of experiments surrounding an image/video dataset of highly complex "fractal" patterns that were originally made using a variety of actual fractal formulas that the I discovered at a time when I had very little mathmematical training.  They are mostly highly parameterized mixtures of the so-called "Kali" set and Mandlebrot/Julia sets, which is where the I started from. However, it seems as though these formula produce significantly more diverse patterns than any other single formula varients of Julia sets that I have seen, though until recently I had not rigorously looked into the established mathematical literature. 
+This is a set of experiments surrounding an image/video dataset of highly complex "fractal" patterns that were originally made using a variety of actual fractal formulas that the I discovered at a time when I had very little mathmematical training.  They are mostly highly parameterized mixtures of the so-called "Kali" set and Mandlebrot/Julia sets, which is where the I started from. However, it seems as though these formula produce significantly more diverse patterns than any other single formula varients of Julia sets that I have seen, though until recently I had not started rigorously looking into the established mathematical literature.
 
 ## Current Status
 
 ### NOTE
 
-**There is a colab notebook that ties this code together and provides an example of usage - there is now a copy of the notebook in this repo, train_alae.ipynb. This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution. This work was done prior to the rise of fourier layers and SIREN style coordinate translation/periodic activations or implicit RGB neural functions and neural radience fields.**
+**There is a colab notebook that ties this code together and provides an example of usage - there is now a copy of the notebook in this repo, train_alae.ipynb. This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution.** 
+
+This work was done prior to the rise of fourier layers and SIREN style coordinate translation/periodic activations or implicit RGB neural functions and neural radience fields.
 
 ### Results
+
 #### Background
+
 Unfortunately, while running these experiments, I realized the importance of preserving the exact codebase and data used in each experiment.  With an external library being downloaded to google colab and then potentially edited within the colab instance, there is no way to reproduce most of the 400+ Comet.ml experiments that I had run.  While I ended up with a fairly good system of ensuring reproducability, I ended up moving on to the new wave of NeRF/SIREN inspired image representations and left this codebase's experiment notebook in a state of suck. While debugging it recently to get an example working, I just replaced many of the losses with one I knew would technically work so I could debug the rest of the training process (a naive FFT based loss). This provides a good example of how a failure case looks like after 16 hours of training (as an aside, the data pipeline is horribly slow). I've also included one of the best results I had gotten, pulled from the comet.ml experiment - I will try to piece together the losses used over the next couple days, but I am fairly sure the contrastive loss that hasn't been debugged yet was a major factor.
 
 #### Examples
@@ -26,9 +30,26 @@ The following are some images that show the current fail results along with the 
 ![alt-text-2](example_results/good_64x64.png "success case output")
 ![alt-text-3](example_results/good_losses.jpeg "success case loss history")
 
+# Data
 ## Julia Sets
 
 [This](http://www.juliasets.dk/Pictures_of_Julia_and_Mandelbrot_sets.htm) is a very good math-based walkthrough of the theories behind generating fractal imagery from Julia set based equations using computers. My ultimate goal is to fully merge the fractal distribution as a prior for a deep AutoEncoder in place of the usual gaussian distribution. 
+
+## Public Dataset
+
+I've added two examples of the data I was testing this with to allow for reproducability:
+
+- https://drive.google.com/file/d/1r9mkx08o33gMjUnTIuPtTnfagygCNfjP/view?usp=sharing
+
+    - A zip file with still images as jpg that have been post processed with photoshop express.
+
+    - Put it in **data/fractal/public_fractal_data.zip** after making a copy in your gdrive to have it work seamlessly with the example notebook.
+
+- https://drive.google.com/file/d/1OO1MnGzJvsHEy2e07Bx48f61CH0IRxxX/view?usp=sharing
+
+    - An mp4 video file at 1080p with a mostly continuous view of one of the fractals progressing along one of the parameters, which gives the illusion of movement - it should be possible to use the same sort of temporal losses used in self-supervised video representation learning. It can also be used as just a dataset like the zip file by using the 'skip' parameter in the frame extraction algorithm provided in the training notebook.
+
+    - Put it in **data/fractal/public_fractal_video.mp4** after making a copy in your gdrive to have it work seamlessly with the example notebook. 
 
 # Adversarial Latent Autoencoder (ALAE) Implementation
 
