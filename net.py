@@ -1937,8 +1937,11 @@ class Encoder(nn.Module):
             x_top = self.fromRGB[-n_blocks](x, downsample=False)
             if self.use_attn:
                 x_top = self.attn[-n_blocks](x_top)
-            if self.use_coord and bbox is not None:
-                x_top = self.coord[-n_blocks](x_top, bbox)
+            if self.use_coord:
+                if bbox is not None:
+                    x_top = self.coord[-n_blocks](x_top, bbox)
+                else:
+                    raise ValueError("Must pass bounding box to Encoder when 'use_coord' is true.")
             inp_top, w1, w2, n = self.encoder[-n_blocks](x_top)
 
             inp_left = self.fromRGB[-n_blocks+1](x, downsample=True)
