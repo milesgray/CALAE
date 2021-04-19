@@ -3,9 +3,10 @@
 **Author**: Miles Gray
 
 This is a set of experiments surrounding an image/video dataset of highly complex "fractal" patterns that were originally made using a variety of actual fractal formulas that the I discovered at a time when I had very little mathmematical training.  They are mostly highly parameterized mixtures of the so-called "Kali" set and Mandlebrot/Julia sets, which is where the I started from. However, it seems as though these formula produce significantly more diverse patterns than any other single formula varients of Julia sets that I have seen, though until recently I had not started rigorously looking into the established mathematical literature.
+## Colab Notebook
 
+A public colab notebook can be found [here](https://drive.google.com/file/d/1wDtrrBfY5nfY9Nr5Tjjzz_THYk5PQ0i7/view?usp=sharing) - see the Data heading below for links to shared google drive files of the datasets expected in the notebook. As of now, you need to also have a comet.ml account to provide an API key/etc for it to run without issue.
 ## Current Status
-
 ### NOTE
 
 **There is a colab notebook that ties this code together and provides an example of usage - there is now a copy of the notebook in this repo, train_alae.ipynb. This is primarily being made public for resume purposes, it currently lacks the polish of a production ready library - use with caution.** 
