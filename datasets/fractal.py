@@ -106,21 +106,36 @@ def make_fractal_alae_dataloader(
 # applied in this class based on the index
 # ------------------------------------------------------------------------------------------------------------------
 class FractalLabel(Dataset):
-    def __init__(self, path="/content/all/", part="train"):
+    def __init__(self, path="/content/all/", part="train", train_split=0.9, cache=False):
+        self.cache = cache
         self.all_data = all_paths = [
             str(p.absolute()) for p in pathlib.Path(path).glob("*")
         ]
         self.total = len(self.all_data)
+        self.split = train_split
         if part == "train":
-            self.data = self.all_data[: int(self.total * 0.9)]
+            self.data = self.all_data[: int(self.total * self.split)]
+            
         else:
-            self.data = self.all_data[int(self.total * 0.9) :]
+            self.data = self.all_data[int(self.total * self.split) :]
+        if self.cache:
+            print(f"Loading {len(self.data)} images into memory...")
+            imgs = []
+            for p in self.data:
+                imgs.append(Image.open(p).convert('RGB'))
+            self.data = imgs
+            print(f"Cache created with {len(self.data)} elements")
+        else:
+            print(f"Loading images from disk during training")
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        result, coords = self.transform(Image.open(self.data[idx]).convert("RGB"))
+        if self.cache:
+            result, coords = self.transform(self.data[idx])
+        else:
+            result, coords = self.transform(Image.open(self.data[idx]).convert("RGB"))
         label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
         return (result, label, coords)
 
