@@ -75,10 +75,10 @@ def loss_generator(E, D, alpha, fake_samples, enable_hessian=True, hessian_layer
             loss += h_loss
     return loss
 
-def loss_avg_generator(G, G_avg, F_z, scale, alpha, loss_fn):
+def loss_avg_generator(G, G_avg, F_z, scale, alpha, loss_fn, bbox=None):
     # Hessian applied to G here
-    G_z = G(F_z, scale, alpha)
-    G_avg_z = G_avg(F_z, scale, alpha)
+    G_z = G(F_z, scale, alpha, bbox=bbox)
+    G_avg_z = G_avg(F_z, scale, alpha, bbox=bbox)
 
     loss = loss_fn(G_z, G_avg_z)
 
@@ -127,23 +127,27 @@ def loss_generator_consistency(fake, real, loss_fn=None, use_perceptual=False,
     return loss
 
 def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn, 
-                     labels=None, use_tv=False, tv_weight=0.001):
+                     labels=None, use_tv=False, tv_weight=0.001,
+                     permute_regularize=False, bbox=None):
     # Hessian applied to G here
     F_z = F(z, scale, z2=None, p_mix=0)
     
     # Autoencoding loss in latent space
-    G_z = G(F_z, scale, alpha)
+    G_z = G(F_z, scale, alpha, bbox=bbox)
     E_z = E(G_z, alpha)
     
     #E_z = E_z.reshape(E_z.shape[0], 1, E_z.shape[1]).repeat(1, F_z.shape[1], 1)
     F_x = F_z[:,0,:]
     if labels is not None:
-        perm = torch.randperm(E_z.shape[0], device=E_z.device)
-        E_z_hat = torch.index_select(E_z, 0, perm)
-        F_x_hat = torch.index_select(F_x, 0, perm)
-        F_hat = torch.cat([F_x, F_x_hat], 0)
-        E_hat = torch.cat([E_z, E_z_hat], 0)
-        loss = loss_fn(F_hat, E_hat, labels)
+        if permute_regularize:
+            perm = torch.randperm(E_z.shape[0], device=E_z.device)
+            E_z_hat = torch.index_select(E_z, 0, perm)
+            F_x_hat = torch.index_select(F_x, 0, perm)
+            F_hat = torch.cat([F_x, F_x_hat], 0)
+            E_hat = torch.cat([E_z, E_z_hat], 0)
+            loss = loss_fn(F_hat, E_hat, labels)
+        else:
+            loss = loss_fn(F_x, E_z, labels)
     else:
         loss = loss_fn(F_x, E_z)
 
@@ -151,10 +155,10 @@ def loss_autoencoder(F, G, E, scale, alpha, z, loss_fn,
         loss += total_variation(G_z) * tv_weight
     return loss 
 
-###########################################
-#### H E S S I A N ########################
-#------------------ GENERATOR
-    
+################################################################################
+#### H E S S I A N #############################################################
+###################-------------------------------------------------------------
+# GENERATOR  
 def loss_generator_hessian(G, F, z, scale, alpha, 
                            scale_alpha=False,
                            hessian_layers=[3], 
@@ -164,7 +168,7 @@ def loss_generator_hessian(G, F, z, scale, alpha,
     if current_layer in hessian_layers or scale_alpha:
         loss = loss * alpha    
     return loss * hessian_weight
-#------------------ ENCODER
+# ENCODER
 def loss_encoder_hessian(E, samples, alpha, scale_alpha=False,
                          hessian_layers=[-1,-2], current_layer=[-1], 
                          hessian_weight=0.01):
@@ -173,8 +177,9 @@ def loss_encoder_hessian(E, samples, alpha, scale_alpha=False,
         loss = loss * alpha
     return loss * hessian_weight
 
-#############################################
-
+################################################################################
+#### F O U R I E R #############################################################
+###################-------------------------------------------------------------
 def fft_loss(x, y, dim=2, diff_fn=lambda x,y: torch.abs(x-y)):
     xf = torch.rfft(x, 3)
     yf = torch.rfft(y, 3)
@@ -183,10 +188,10 @@ def fft_loss(x, y, dim=2, diff_fn=lambda x,y: torch.abs(x-y)):
     return loss
 
 
-#############################################
-#### S T A N D A R D ########################
-#####################------------------------
-
+################################################################################
+#### S T A N D A R D ###########################################################
+#####################-----------------------------------------------------------
+# Generally applicable losses?
 def msle(x, y):
     return (torch.log(x) - torch.log(y)).pow(2).mean()
 
@@ -226,9 +231,9 @@ def adv_loss(logits, target):
     loss = F.binary_cross_entropy_with_logits(logits, targets)
     return loss
 
-#############################################
-#### P E R C E P T U A L ####################
-#########################--------------------    
+####################################################################################
+#### P E R C E P T U A L ###########################################################
+#########################-----------------------------------------------------------
 ## Perceptual Loss
 percep_layer_lookup = {
     4: 4,
@@ -254,8 +259,8 @@ def percep_loss(x, y, scale):
     loss = loss.mean()
     return loss
 
-##########################################################################################
-### FAMOS losses - https://github.com/zalandoresearch/famos/blob/master/utils.py
+######################################################################################
+### FAMOS losses - https://github.com/zalandoresearch/famos/blob/master/utils.py #####
 ##some image level content loss
 def contentLoss(a, b, netR, loss_type):
     def nr(x):
@@ -319,9 +324,9 @@ def avgG(x):
     pad=nn.functional.pad(x,(gwid//2,gwid//2,gwid//2,gwid//2),'reflect')##last 2 dimensions padded
     return nn.functional.conv2d(pad,kernel)##reflect pad should avoid border artifacts 
 
-#############################################
-#### T O T A L V A R I A T I O N ############
-#################################------------   
+########################################################################################
+#### T O T A L - V A R I A T I O N #####################################################
+###################################-----------------------------------------------------
 
 def tv_loss(x, y, loss_fn):
     loss = loss_fn(total_variation(x), total_variation(y))    
@@ -340,10 +345,9 @@ def tvArray(x):
     border = torch.cat([border1, border2], 1)
     return border
 
-#############################################
-#### G R A M ################################
-#############--------------------------------  
-
+##########################################################################################
+#### G R A M #############################################################################
+#############-----------------------------------------------------------------------------
 def gram_loss(x, y):
     loss = gramMatrix(x, x).exp() - gramMatrix(y, y).exp()
     loss = loss.abs()
@@ -380,7 +384,7 @@ def gramMatrix(x,y=None,sq=True,bEnergy=False):
 
 ##########################################################################################
 #### P E A K - S I G N A L - N O I S E - R A T I O #######################################
-###################################################---------------------------------------  
+###################################################---------------------------------------
 ## PSNR
 def psnr(img1, img2):
     diff = img1 - img2
@@ -392,7 +396,7 @@ def psnr(img1, img2):
 
 ##########################################################################################
 #### S S I M #############################################################################
-###################################################---------------------------------------
+#############-----------------------------------------------------------------------------
 ## SSIM 
 def ssim_loss(x, y):
     loss = 1 - ssim(x, y)
@@ -520,7 +524,7 @@ def ms_ssim(X_a, X_b, window_size=11, size_average=True, C1=0.01**2, C2=0.03**2)
 
 ##########################################################################################
 #### S O B E L ###########################################################################
-###################################################---------------------------------------
+###############---------------------------------------------------------------------------
 ## Sobel
 def ssim_sobel_loss(x, y, window_size=11, size_average=True, val_range=2, normalize=True):
     x_sobel = sobel(x)
@@ -574,6 +578,7 @@ def sobel(img):
     #N,C,_,_ = img.size()
     grad_y, grad_x = sobel_grad(img)
     return torch.cat((grad_y, grad_x), dim=1)
+
 def sobel_grad(img, stride=1, padding=1):
     img = torch.mean(img, 1, True)
     fx = np.array([[1,0,-1],[2,0,-2],[1,0,-1]])
@@ -595,16 +600,13 @@ def sobel_grad(img, stride=1, padding=1):
 
 ##########################################################################################
 #### O R I G I N A L - A L A E ###########################################################
-###################################################---------------------------------------
+###############################-----------------------------------------------------------
 ## Original 
-
 def kl(mu, log_var):
     return -0.5 * torch.mean(torch.mean(1 + log_var - mu.pow(2) - log_var.exp(), 1))
 
-
 def reconstruction(recon_x, x, lod=None):
     return torch.mean((recon_x - x)**2)
-
 
 def discriminator_logistic_simple_gp(d_result_fake, d_result_real, reals, r1_gamma=10.0):
     loss = (torch.nn.functional.softplus(d_result_fake) + torch.nn.functional.softplus(-d_result_real))
@@ -615,7 +617,6 @@ def discriminator_logistic_simple_gp(d_result_fake, d_result_real, reals, r1_gam
         r1_penalty = torch.sum(real_grads.pow(2.0), dim=[1, 2, 3])
         loss = loss + r1_penalty * (r1_gamma * 0.5)
     return loss.mean()
-
 
 def discriminator_gradient_penalty(d_result_real, reals, r1_gamma=10.0):
     real_loss = d_result_real.sum()
@@ -776,7 +777,6 @@ class GramMatrixLoss(nn.Module):
         gram = -torch.clamp(d, min=1e-10)#.sqrt()
         return gram
 
-
 class AutoEncoderLoss(nn.Module):
     def __init__(self, loss_fn, use_tv=False, use_dist=False, enable_hessian=False, hessian_weight=0.01):
         super().__init__()
@@ -839,7 +839,6 @@ class BaseLoss(torch.nn.Module):
     def loss_stats(self):
         return self.loss_stats_
 
-
 class CriticLoss(BaseLoss):
     def __init__(self):
         super(CriticLoss, self).__init__()
@@ -848,7 +847,6 @@ class CriticLoss(BaseLoss):
         loss = (critic_outputs_t - critic_outputs_s).mean()
         self.loss_stats_['total'] = loss
         return loss
-
 
 class CycleLoss(BaseLoss):
     def __init__(self):
@@ -864,7 +862,6 @@ class CycleLoss(BaseLoss):
         self.loss_stats_['z_s_l1_loss'] = z_s_l1_loss
         self.loss_stats_['total'] = loss
         return loss
-
 
 class GeneratorLoss(BaseLoss):
     def __init__(self):
@@ -882,7 +879,6 @@ class GeneratorLoss(BaseLoss):
         })
         self.loss_stats_['total'] = loss
         return loss
-
 
 class FaceRotationModelLoss(BaseLoss):
     def __init__(self):
@@ -911,7 +907,6 @@ class FaceRotationModelLoss(BaseLoss):
             f'generator_loss/{key}': generator_loss_stats[key] for key in generator_loss_stats.keys()
         })
         return losses
-
 
 class DiceDissimilarityLoss(nn.Module):
     def __init__(self, eps=1e-7):
