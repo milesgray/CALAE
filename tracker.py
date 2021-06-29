@@ -34,9 +34,33 @@ where `σli(t)` is the standard deviation over all known loss ratios `Li(t)/µli
 import numpy as np
 import torch
 
-#epoch_len = steps_per_scale[valid_scales[0]]
 class LossTracker:
     def __init__(self, name, experiment, weight=1, warmup=np.inf, max=np.inf, block_size=100):
+        """A wrapper around the pytorch `backwards` method call that also:
+           
+            - calculates a set of running statistics of losses
+            - applies constraints to the loss value
+                - `weight`: static scaling value applied before `warmup` steps
+                - `max`: hard upper limit on loss value
+                - dynamic weight: `weight` is set based on statistical calculations after `warmup` steps
+                    - NOTE: This only works with "well behaved" losses that fall in the 0-1 range
+            - logs each value and statistic after each update
+                - comet.ml experiment
+                - console
+
+        Args:
+            name (str): Used in logging and as a key for lookup tables
+            experiment ([type]): comet.ml interface
+            weight (int, optional): Static weight scaling value, used until `warmup` calls to update. 
+                Defaults to 1.
+            warmup (int, optional): Determines number of updates to do before dynamically
+                calculating weight.  Using infinity effectively disables the dynamic weight
+                feature. Defaults to np.inf.
+            max (int, optional): Hard upper limit on the value of the loss.  Using infinity
+                effectively disables this feature. Defaults to np.inf.
+            block_size (int, optional): Initial size of the dynamically allocated loss history
+                buffers. `expand_buffer` must be called before each epoch with  Defaults to 100.
+        """
         self.name = name
         self.exp = experiment
         self.weight = weight
@@ -85,12 +109,12 @@ class LossTracker:
             self.ratio = 1 # ratio of 1 when mean is 0
         self.ratio_history[self.count] = self.ratio 
         self.count += 1
-        if self.count > 1:  # only once there is a history          
+        if self.count > 1:  # only once there is a history
             self.ratio_std = self.ratio_history.std() # σli(t) is the standard deviation over all known loss ratios Li(t)/µli(t−1) until iteration t - 1        
             self.cov_weight = self.ratio_std / self.ratio # αi = σli(t) / li(t)
         if self.count > self.warmup:
             # use cov weight as functioning weight after warmup period to allow for meaningful statistics to build
-            self.weight = self.cov_weight        
+            self.weight = self.cov_weight
         self.mean = self.value_history[:self.count].mean()
         self.var = self.value_history[:self.count].var()
         self.std = self.value_history[:self.count].std()
@@ -98,7 +122,7 @@ class LossTracker:
         # update comet or print out
         self.log(comet=do_comet, console=do_console)
 
-    def log(self, comet=True, console=False):        
+    def log(self, comet=True, console=False):
         if comet:
             self.exp.log_metric(f"{self.name}_loss", self.value)
             self.exp.log_metric(f"{self.name}_cov", self.cov)
