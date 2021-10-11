@@ -1,7 +1,7 @@
 import pickle
 
-from dlutils.pytorch import count_parameters
-from dlutils import download
+#from dlutils.pytorch import count_parameters
+#from dlutils import download
 from tqdm import tqdm
 
 from PIL import Image
@@ -58,11 +58,11 @@ def sample(cfg, logger):
     mapping_fl = model.mapping_fl
     dlatent_avg = model.dlatent_avg
 
-    logger.info("Trainable parameters generator:")
-    count_parameters(decoder)
+    #logger.info("Trainable parameters generator:")
+    #count_parameters(decoder)
 
-    logger.info("Trainable parameters discriminator:")
-    count_parameters(encoder)
+    #logger.info("Trainable parameters discriminator:")
+    #count_parameters(encoder)
 
     arguments = dict()
     arguments["iteration"] = 0
@@ -99,7 +99,3 @@ def sample(cfg, logger):
         ppl.evaluate(logger, mapping_fl, decoder, encoder, cfg.DATASET.MAX_RESOLUTION_LEVEL - 2)
 
 
-if __name__ == "__main__":
-    gpu_count = 1
-    run(sample, get_cfg_defaults(), description='ALAE-lpips', default_config='configs/experiment_celeba.yaml',
-        world_size=gpu_count, write_log="metrics/lpips_score.txt")

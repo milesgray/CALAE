@@ -16,12 +16,12 @@ class WplusLoss(nn.Module):
         self.perceptual_loss_function = PerceptualLoss(
             model='net-lin', net='vgg', use_gpu=device.startswith('cuda')
         )
-    
+
     def forward(self, input_img: Tensor, target_img: Tensor) -> Tensor:
         perceptual_loss = lambdas['l_percept'] * perceptual_loss_function(input_img, target_img).sum()
         mse_loss = lambdas['l_mse'] * F.mse_loss(input_img, target_img, reduction='none')
         mse_loss = mse_loss.mean(dim=(1, 2, 3)).sum()
-        loss = perceptual_loss + mse_loss        
+        loss = perceptual_loss + mse_loss
         return loss
 
 class WplusStyleLoss(nn.Module):
@@ -29,12 +29,12 @@ class WplusStyleLoss(nn.Module):
         super().__init__()
         self.lambdas = lambdas
         self.device = device
-        self.perceptual_and_style_loss = FixedPerceptualAndStyleLoss(content_image, 
-                                                                     style_image, 
-                                                                     mask_image.detach(), 
+        self.perceptual_and_style_loss = FixedPerceptualAndStyleLoss(content_image,
+                                                                     style_image,
+                                                                     mask_image.detach(),
                                                                      (1 - mask_image).detach())
         self.perceptual_and_style_loss.to(device)
-    
+
     def forward(self, input_img: Tensor, target_img: Tensor) -> Tensor:
         style_loss, perceptual_loss = perceptual_and_style_loss(input_img)
         style_loss = lambdas['l_style'] * style_loss
@@ -49,7 +49,7 @@ class NaiveNoiseLoss(nn.Module):
     def __init__(self, lambdas: tp.Dict[str, float]):
         super().__init__()
         self.lambdas = lambdas
-    
+
     def forward(self, input_img: Tensor, target_img: Tensor) -> Tensor:
         mse_loss = lambdas['l_mse'] * F.mse_loss(input_img, target_img, reduction='none')
         mse_loss = mse_loss.mean(dim=(1, 2, 3)).sum()
@@ -64,7 +64,7 @@ class NoiseLoss(nn.Module):
         self.style_image = style_image
         self.mask_image = mask_image
         self.device = device
-    
+
     def forward(self, input_img: Tensor, target_img: Tensor) -> Tensor:
         mse_loss_1 = lambdas['l_mse_1'] * torch.square(self.mask_image * (input_img - self.content_image.detach())).mean()
         mse_loss_2 = lambdas['l_mse_2'] * torch.square((1 - self.mask_image) * (input_img - self.style_image.detach())).mean()

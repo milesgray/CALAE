@@ -15,7 +15,7 @@ try:
 except ImportError:
     accimage = None
 
-from .augments import MultiCrop, BuildOutput, get_blur, get_color_distortion
+from .augments import MultiCropCoord, BuildOutput, get_blur, get_color_distortion
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ class Fractal(Dataset):
         self.split = train_split
         if part == "train":
             self.data = self.all_data[: int(self.total * self.split)]
-            
+
         else:
             self.data = self.all_data[int(self.total * self.split) :]
         if self.cache:
@@ -115,7 +115,7 @@ class FractalLabel(Dataset):
         self.split = train_split
         if part == "train":
             self.data = self.all_data[: int(self.total * self.split)]
-            
+
         else:
             self.data = self.all_data[int(self.total * self.split) :]
         if self.cache:
@@ -158,8 +158,8 @@ def make_fractal_clr_dataloader(
     transform_list = []
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(get_color_distortion(s=0.2, use_grayscale=False))    
-    transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode))
+    transform_list.append(get_color_distortion(s=0.2, use_grayscale=False))
+    transform_list.append(MultiCropCoord(crop_size, image_size, count=crop_mode))
     transform_list.append(BuildOutput(mean, std))
 
     dataset.transform = transforms.Compose(transform_list)
@@ -219,7 +219,7 @@ def make_fractal_clr_sr_dataloader(
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
     transform_list.append(transforms.RandomApply([transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2)], 0.7))
-    transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
+    transform_list.append(MultiCropCoord(crop_size, image_size, count=crop_mode, return_original=True))
     transform_list.append(BuildOutput(mean, std, super_res=True))
 
     dataset.transform = transforms.Compose(transform_list)
@@ -258,7 +258,7 @@ class ContrastiveMultiCropDataset(datasets.ImageFolder):
 
         for i in range(count):
             randomcrop = transforms.RandomCrop(crop_size)
-            resizecrop = MultiCrop(self.resize_size)
+            resizecrop = MultiCropCoord(self.resize_size)
             trans.extend(
                 [
                     transforms.Compose(
@@ -344,7 +344,7 @@ def make_fractal_TUNIT_dataloader(
     transform_list.append(get_blur(p=0.6, s=s, kernel_size=17))
     transform_list.append(get_color_distortion(s=0.6, use_grayscale=use_grayscale))
     if isinstance(crop_mode, int):
-        transform_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
+        transform_list.append(MultiCropCoord(crop_size, image_size, count=crop_mode, return_original=True))
         transform_list.append(BuildOutput(mean, std, super_res=True))
     else:
         transform_list.append(transforms.ToTensor())
@@ -365,7 +365,7 @@ def make_fractal_TUNIT_dataloader(
         crop_list.append(transforms.Resize((image_size, image_size)))
     crop_list.append(get_blur(p=0.3, s=s, kernel_size=24))
     if isinstance(crop_mode, int):
-        crop_list.append(MultiCrop(crop_size, image_size, count=crop_mode, return_original=True))
+        crop_list.append(MultiCropCoord(crop_size, image_size, count=crop_mode, return_original=True))
         crop_list.append(BuildOutput(mean, std, super_res=True))
     else:
         crop_list.append(transforms.ToTensor())

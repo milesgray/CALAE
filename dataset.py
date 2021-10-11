@@ -99,17 +99,17 @@ class CelebA(Dataset):
             self.data = [os.path.join(path, file) for file in os.listdir(path)][:182637]
         else:
             self.data = [os.path.join(path, file) for file in os.listdir(path)][182637:]
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         return self.transform(Image.open(self.data[idx]))
-    
+
 def make_celeba_dataloader(dataset, batch_size, image_size=4):
     dataset.transform = transforms.Compose([
-                                            transforms.Resize((image_size, image_size)),                
-                                            transforms.RandomHorizontalFlip(),      
+                                            transforms.Resize((image_size, image_size)),
+                                            transforms.RandomHorizontalFlip(),
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5), inplace=True)])
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=4, drop_last=True)
@@ -120,39 +120,65 @@ def make_celeba_dataloader(dataset, batch_size, image_size=4):
 # Custom Fractal Images dataset with high resolution images.  Must apply crop to use.
 # ------------------------------------------------------------------------------------------------------------------
 class Fractal(Dataset):
-    def __init__(self, path='/content/all/', part='train'):
-        self.all_data = all_paths = [str(p.absolute()) for p in pathlib.Path(path).glob("*")]
+    def __init__(self, path='/content/all/', part='all', cache='memory'):
+        self.all_data = [str(p.absolute()) for p in pathlib.Path(path).glob("*")]
         self.total = len(self.all_data)
-        if part=='train':            
+        if part == 'all':
+            self.data = self.all_data
+        elif part=='train':
             self.data = self.all_data[:int(self.total*0.9)]
         else:
             self.data = self.all_data[int(self.total*0.9):]
-    
+
+        self.cache = cache
+        if self.cache == 'memory':
+            logging.info(f"Using in memory cache for {self.total} images")
+            cache_temp = []
+            for p in tqdm(self.data):
+                try:
+                    cache_temp.append(Image.open(p).convert('RGB'))
+                except Exception as e:
+                    logging.error(f"Failed loading image in dataset:\n{e}")
+            self.data = cache_temp
+            del cache_temp
+
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         return self.transform(Image.open(self.data[idx]).convert('RGB'))
 # ------------------------------------------------------------------------------------------------------------------
 # Prepares a set of transformations that crops a certain scale square area randomly from each images
 # in a batch, effectively making a much larger dataset than individual image count suggests.
 # ------------------------------------------------------------------------------------------------------------------
-def make_fractal_alae_dataloader(dataset, batch_size, image_size=4, crop_size=512, 
-num_workers=3, crop_mode='random', mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
+def make_fractal_alae_dataloader(dataset, batch_size, 
+                                 image_size=4,
+                                 crop_size=512,
+                                 num_workers=3,
+                                 crop_mode='random',
+                                 mean=(0.5, 0.5, 0.5),
+                                 std=(0.5, 0.5, 0.5),
+                                 jitter_settings={"brightness": 0.1, 
+                                                  "contrast": 0.3, 
+                                                  "saturation": 0.3, 
+                                                  "hue": 0.3}):
     transform_list = []
     if isinstance(crop_mode, str):
         if crop_mode == 'random':
-            transform_list.append(transforms.RandomCrop(crop_size, pad_if_needed=True, padding_mode='symmetric'))        
+            transform_list.append(transforms.RandomCrop(crop_size,
+                                                        pad_if_needed=True,
+                                                        padding_mode='symmetric'))
         elif crop_mode == 'center':
-            transform_list.append(transforms.CenterCrop(crop_size))                
-    transform_list.append(transforms.Resize((image_size, image_size)))            
+            transform_list.append(transforms.CenterCrop(crop_size))
+    transform_list.append(transforms.Resize((image_size, image_size)))
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    #transform_list.append(transforms.RandomGrayscale(p=0.1)) 
+    transform_list.append(transforms.ColorJitter(**jitter_settings))
+    #transform_list.append(transforms.RandomGrayscale(p=0.1))
     transform_list.append(transforms.ToTensor())
     transform_list.append(transforms.Normalize(mean, std, inplace=True))
-    
+
     dataset.transform = transforms.Compose(transform_list)
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
 
@@ -166,14 +192,14 @@ class FractalLabel(Dataset):
     def __init__(self, path='/content/all/', part='train'):
         self.all_data = all_paths = [str(p.absolute()) for p in pathlib.Path(path).glob("*")]
         self.total = len(self.all_data)
-        if part=='train':            
+        if part=='train':
             self.data = self.all_data[:int(self.total*0.9)]
         else:
             self.data = self.all_data[int(self.total*0.9):]
-    
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
         result, coords = self.transform(Image.open(self.data[idx]).convert('RGB'))
         label = torch.full((result.shape[0],), fill_value=idx, dtype=torch.int)
@@ -185,14 +211,14 @@ class FractalLabel(Dataset):
 # of each crop. Results in a 4-d tensor [N, C, H, W] with N being number of crops
 # ------------------------------------------------------------------------------------------------------------------
 def make_fractal_clr_dataloader(dataset, batch_size, image_size=4, crop_size=512, num_workers=3, crop_mode=5, mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)):
-    transform_list = []             
+    transform_list = []
     transform_list.append(transforms.RandomHorizontalFlip(p=0.5))
     transform_list.append(transforms.RandomVerticalFlip(p=0.5))
-    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))   
-    #transform_list.append(transforms.RandomGrayscale(p=0.1))     
-    transform_list.append(MultiCropV2(crop_size, image_size, count=crop_mode))
+    transform_list.append(transforms.ColorJitter(brightness=0.1, contrast=0.3, saturation=0.3, hue=0.2))
+    #transform_list.append(transforms.RandomGrayscale(p=0.1))
+    transform_list.append(MultiCropCoordV2(crop_size, image_size, count=crop_mode))
     transform_list.append(BuildOutput(mean, std))
-    
+
     dataset.transform = transforms.Compose(transform_list)
     return DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers, drop_last=True)
 
@@ -206,8 +232,12 @@ def _get_image_size(img):
     else:
         raise TypeError("Unexpected type {}".format(type(img)))
 
-class MultiCrop:
-    def __init__(self, crop_size, resize_size, count=5, crop_pad=0., use_pad=False, seed=random.randint(0,1000)):
+class MultiCropCoord:
+    def __init__(self, crop_size, resize_size,
+                count=5,
+                crop_pad=0.,
+                use_pad=False,
+                seed=42):
         self.crop_size = crop_size
         self.resize_size = resize_size
         self.count = count
@@ -227,7 +257,7 @@ class MultiCrop:
         return (self._resize_img(results), self._resize_coords(coords))
 
     def _check_size(self, x):
-        """ Ensures the image is big enough to 
+        """ Ensures the image is big enough to
         """
         self.h, self.w = _get_image_size(x)
         # if not using padding boundary for valid crop area, then total size is just crop size
@@ -249,7 +279,7 @@ class MultiCrop:
                 ratio_w = 1
                 ratio_r = self.crop_size / self.w
             # do resize based on if either PIL or Tensor
-            if _is_pil_image(x):                
+            if _is_pil_image(x):
                 x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
                              int(int(self.h * ratio_r) + pad_amount * ratio_h)
                             )
@@ -293,8 +323,8 @@ class MultiCrop:
             ph = pw = 0
         # calculate available space left over after crop and padding (max x/y)
         available_h = self.h - th - ph
-        available_w = self.w - tw - pw  
-        padding_h = padding_w = 0         
+        available_w = self.w - tw - pw
+        padding_h = padding_w = 0
         if available_h < 0:
             # this much extra room needed in height
             padding_h = abs(available_h)
@@ -335,7 +365,7 @@ class MultiCrop:
         resized = []
         for coord in coords:
             ratio = self.resize_size / self.crop_size
-            
+
             x1 = int(coord[0] * ratio)
             y1 = int(coord[1] * ratio)
             x2 = int(coord[2] * ratio)
@@ -345,13 +375,13 @@ class MultiCrop:
             resized.append((x1, y1, x2, y2, h, w))
         return resized
 
-class MultiCropV2(object):   
-    def __init__(self, crop_size, resize_size, 
+class MultiCropCoordV2(object):
+    def __init__(self, crop_size, resize_size,
                  count=5,
-                 padding=None, 
-                 pad_if_needed=False, 
-                 fill=0, 
-                 padding_mode='constant', 
+                 padding=None,
+                 pad_if_needed=False,
+                 fill=0,
+                 padding_mode='constant',
                  interpolation=Image.BILINEAR):
         if isinstance(crop_size, numbers.Number):
             self.crop_size = (int(crop_size), int(crop_size))
@@ -367,7 +397,7 @@ class MultiCropV2(object):
             self.resize_size = (int(resize_size), int(resize_size))
         else:
             self.resize_size = resize_size
-        self.interp = interpolation        
+        self.interp = interpolation
         self.resizecrop = transforms.Resize(self.resize_size, interpolation=self.interp)
 
     @staticmethod
@@ -403,7 +433,7 @@ class MultiCropV2(object):
         return (results, coords)
 
     def _check_size(self, x):
-        """ Ensures the image is big enough to 
+        """ Ensures the image is big enough to
         """
         self.h, self.w = _get_image_size(x)
         # if not using padding boundary for valid crop area, then total size is just crop size
@@ -425,7 +455,7 @@ class MultiCropV2(object):
                 ratio_w = 1
                 ratio_r = total_h / self.w
             # do resize based on if either PIL or Tensor
-            if _is_pil_image(x):                
+            if _is_pil_image(x):
                 x = x.resize(int(int(self.w * ratio_r) + pad_amount * ratio_w),
                              int(int(self.h * ratio_r) + pad_amount * ratio_h)
                             )
@@ -478,7 +508,7 @@ class MultiCropV2(object):
         """
         ratio_x = self.resize_size[0] / self.crop_size[1]
         ratio_y = self.resize_size[0] / self.crop_size[1]
-        
+
         x1 = int(coord[0] * ratio_x)
         y1 = int(coord[1] * ratio_y)
         x2 = int(coord[2] * ratio_x)
@@ -492,8 +522,8 @@ class BuildOutput:
     def __init__(self, mean, std):
         self.mean = mean
         self.std = std
-    def __call__(self, x):   
-        y = x[1] 
+    def __call__(self, x):
+        y = x[1]
         x = x[0]
         data = torch.stack([transforms.Normalize(self.mean, self.std, inplace=True)(
             torch.from_numpy(np.array(crop, np.float32, copy=False).transpose((2, 0, 1))).contiguous()) for crop in x])
@@ -515,8 +545,10 @@ class MultiCropDataset(datasets.ImageFolder):
         max_scale_crops,
         size_dataset=-1,
         return_index=False,
+        mean=[0.485, 0.456, 0.406],
+        std=[0.228, 0.224, 0.225]
     ):
-        super(MultiCropDataset, self).__init__(data_path)
+        super().__init__(data_path)
         assert len(size_crops) == len(nmb_crops)
         assert len(min_scale_crops) == len(nmb_crops)
         assert len(max_scale_crops) == len(nmb_crops)
@@ -526,8 +558,7 @@ class MultiCropDataset(datasets.ImageFolder):
 
         trans = []
         color_transform = transforms.Compose([get_color_distortion(), RandomGaussianBlur()])
-        mean = [0.485, 0.456, 0.406]
-        std = [0.228, 0.224, 0.225]
+
         for i in range(len(size_crops)):
             randomresizedcrop = transforms.RandomResizedCrop(
                 size_crops[i],

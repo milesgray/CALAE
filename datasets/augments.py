@@ -37,14 +37,14 @@ def _get_image_size(img):
         raise TypeError("Unexpected type {}".format(type(img)))
 
 # Custom Augment Classes that can be put into Compose
-class MultiCrop:   
-    def __init__(self, crop_size, resize_size, 
+class MultiCropCoord:
+    def __init__(self, crop_size, resize_size,
                  count=5,
-                 padding=None, 
+                 padding=None,
                  return_original=False,
-                 pad_if_needed=False, 
-                 fill=0, 
-                 padding_mode='constant', 
+                 pad_if_needed=False,
+                 fill=0,
+                 padding_mode='constant',
                  interpolation=Image.BILINEAR):
         if isinstance(crop_size, numbers.Number):
             self.crop_size = (int(crop_size), int(crop_size))
@@ -61,7 +61,7 @@ class MultiCrop:
             self.resize_size = (int(resize_size), int(resize_size))
         else:
             self.resize_size = resize_size
-        self.interp = interpolation        
+        self.interp = interpolation
         self.resizecrop = transforms.Resize(self.resize_size, interpolation=self.interp)
 
     @staticmethod
@@ -103,7 +103,7 @@ class MultiCrop:
             return (results, coords)
 
     def _check_size(self, x):
-        """ Ensures the image is big enough to 
+        """ Ensures the image is big enough to
         """
         self.h, self.w = _get_image_size(x)
         # if not using padding boundary for valid crop area, then total size is just crop size
@@ -136,7 +136,7 @@ class MultiCrop:
                 x = x.resize(resize_width,
                              resize_height)
                 # get new size
-                self.h, self.w = _get_image_size(x)            
+                self.h, self.w = _get_image_size(x)
             return x
         else:
             # image is large enough already
@@ -174,7 +174,7 @@ class MultiCrop:
         """
         ratio_x = self.resize_size[0] / self.crop_size[1]
         ratio_y = self.resize_size[0] / self.crop_size[1]
-        
+
         x1 = int(coord[0] * ratio_x)
         y1 = int(coord[1] * ratio_y)
         x2 = int(coord[2] * ratio_x)
@@ -191,11 +191,11 @@ class BuildOutput:
         self.std = std
         self.super_res = super_res
 
-    def __call__(self, x):        
+    def __call__(self, x):
         if self.super_res:
             y = x[2] # coords of crop resized imgs
             z = x[1] # original cropped imgs
-            x = x[0] # cropped resized imgs            
+            x = x[0] # cropped resized imgs
         else:
             y = x[1] # coords of crop resized imgs
             x = x[0] # cropped resized imgs
@@ -231,14 +231,14 @@ class BuildOutput:
 class RandomGaussianBlur:
     def __init__(self, p=0.5, window=23):
         self.window = window
-        if isinstance(p, int):            
+        if isinstance(p, int):
             self.p = p / 100 if p < 100 else 1.0
         elif isinstance(p, float):
             self.p = p
         else:
             self.p = float(p)
 
-    def __call__(self, img):        
+    def __call__(self, img):
         if np.random.rand() < self.p:
             return img
         sigma = np.random.rand() * 1.9 + 0.1

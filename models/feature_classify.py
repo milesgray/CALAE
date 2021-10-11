@@ -62,7 +62,7 @@ def channel_shuffle(x, groups):
 
 class InvertedResidual(nn.Module):
     def __init__(self, inp, oup, stride):
-        super(InvertedResidual, self).__init__()
+        super().__init__()
 
         if not (1 <= stride <= 3):
             raise ValueError('illegal stride value')

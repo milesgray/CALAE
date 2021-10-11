@@ -89,7 +89,7 @@ class PixelNorm(nn.Module):
         :return: y => pixel normalized activations
         """
         y = torch.sqrt(torch.mean(x**2, dim=1, keepdim=True) + 1e-8)  # [N1HW]
-        y = x / y  # normalize the input x volume 
+        y = x / y  # normalize the input x volume
         return y
 # ------------------------------------------------------------------------------------------------------------------
 # Switchable Norm
@@ -104,7 +104,7 @@ class SwitchNorm:
             self.norm = SwitchNorm2d(num_features, eps=eps, momentum=momentum, using_moving_average=using_moving_average)
         if dims == 3:
             self.norm = SwitchNorm3d(num_features, eps=eps, momentum=momentum, using_moving_average=using_moving_average)
-        
+
     def reset_parameters(self):
         self.norm.reset_parameters()
 
