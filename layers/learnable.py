@@ -8,7 +8,7 @@ from CALAE.layers.scaled import ScaledLinear
 # Learnable Affine Gaussian-ish Transformation
 # Used for fine grain corrective projection after a heavier transform
 # ------------------------------------------------------------------------------------------------------------------
-class LearnableGaussianTransform0d(nn.Module):        
+class LearnableGaussianTransform0d(nn.Module):
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
         """
@@ -22,7 +22,7 @@ class LearnableGaussianTransform0d(nn.Module):
         x = self.bias.exp() * x
         z = z + (x - 1)
         return z
-class LearnableGaussianTransform1d(nn.Module):        
+class LearnableGaussianTransform1d(nn.Module):
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
         """
@@ -36,7 +36,7 @@ class LearnableGaussianTransform1d(nn.Module):
     def forward(self, x):
         z = self.A.weight * x
         x = self.A.bias.exp() * x
-      
+
         z = z + (x - 1)
         return z
 class LearnableGaussianTransform2d(nn.Module):
@@ -49,13 +49,13 @@ class LearnableGaussianTransform2d(nn.Module):
 
     def forward(self, x):
         x = self.weight * x
-        z = self.bias.exp() * x       
+        z = self.bias.exp() * x
         return x + (z - 1)
 # ------------------------------------------------------------------------------------------------------------------
 # Learnable Affine Gaussian-ish Transformation
 # Used for fine grain corrective projection after a heavier transform
 # ------------------------------------------------------------------------------------------------------------------
-class LearnableAffineTransform0d(nn.Module):        
+class LearnableAffineTransform0d(nn.Module):
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
         """
@@ -72,7 +72,7 @@ class LearnableAffineTransform0d(nn.Module):
         x = self.bias.exp() * x
         z = z + x
         return z
-class LearnableAffineTransform1d(nn.Module):        
+class LearnableAffineTransform1d(nn.Module):
     def __init__(self, scale=512):
         """ scale matches input and does not change shape, only values
         """
@@ -88,7 +88,7 @@ class LearnableAffineTransform1d(nn.Module):
     def forward(self, x):
         z = self.A.linear.__dict__['_parameters']['weight_orig'] * x
         x = self.A.linear.bias.exp() * x
-      
+
         z = z + x
         return z
 class LearnableAffineTransform2d(nn.Module):
@@ -101,5 +101,5 @@ class LearnableAffineTransform2d(nn.Module):
 
     def forward(self, x):
         x = self.weight.exp() * x
-        z = self.bias + x       
+        z = self.bias + x
         return z

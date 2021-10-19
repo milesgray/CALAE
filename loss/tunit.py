@@ -66,8 +66,7 @@ def calc_iic_loss(x_out, x_tf_out, lamb=1.0, EPS=1e-10):
     assert (p_i_j.size() == (k, k))
 
     p_i = p_i_j.sum(dim=1).view(k, 1).expand(k, k)
-    p_j = p_i_j.sum(dim=0).view(1, k).expand(k,
-                                             k)  # but should be same, symmetric
+    p_j = p_i_j.sum(dim=0).view(1, k).expand(k, k)  # but should be same, symmetric
 
     # avoid NaN losses. Effect will get cancelled out by p_i_j tiny anyway
     p_i_j[(p_i_j < EPS).data] = EPS
@@ -90,7 +89,7 @@ def compute_joint(x_out, x_tf_out):
     assert (x_tf_out.size(0) == bn and x_tf_out.size(1) == k)
 
     p_i_j = x_out.unsqueeze(2) * x_tf_out.unsqueeze(1)  # bn, k, k
-    p_i_j = p_i_j.sum(dim=0)  # k, k
+    p_i_j = p_i_j.sum(dim=0)  # k, knordvp
     p_i_j = (p_i_j + p_i_j.t()) / 2.  # symmetrise
     p_i_j = p_i_j / p_i_j.sum()  # normalise
 

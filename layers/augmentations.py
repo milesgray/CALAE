@@ -24,7 +24,7 @@ class RandomResizedCropLayer(nn.Module):
             scale (tuple): range of size of the origin size cropped
             ratio (tuple): range of aspect ratio of the origin aspect ratio cropped
         '''
-        super(RandomResizedCropLayer, self).__init__()
+        super().__init__()
 
         _eye = torch.eye(2, 3)
         self.size = size
@@ -114,10 +114,9 @@ class RandomResizedCropLayer(nn.Module):
 
         return whbias
 
-
 class HorizontalFlipRandomCrop(nn.Module):
     def __init__(self, max_range):
-        super(HorizontalFlipRandomCrop, self).__init__()
+        super().__init__()
         self.max_range = max_range
         _eye = torch.eye(2, 3)
         self.register_buffer('_eye', _eye)
@@ -147,10 +146,9 @@ class HorizontalFlipRandomCrop(nn.Module):
         bias = torch.empty((N, 2), device=device).uniform_(-self.max_range, self.max_range)
         return sign, bias
 
-
 class Rotation(nn.Module):
     def __init__(self, max_range = 4):
-        super(Rotation, self).__init__()
+        super().__init__()
         self.max_range = max_range
         self.prob = 0.5
 
@@ -174,10 +172,9 @@ class Rotation(nn.Module):
 
         return output
 
-
 class CutPerm(nn.Module):
     def __init__(self, max_range = 4):
-        super(CutPerm, self).__init__()
+        super().__init__()
         self.max_range = max_range
         self.prob = 0.5
 
@@ -217,7 +214,6 @@ class CutPerm(nn.Module):
 
         return inputs
 
-
 class HorizontalFlipLayer(nn.Module):
     def __init__(self):
         """
@@ -226,7 +222,7 @@ class HorizontalFlipLayer(nn.Module):
             (64, 128, 3). Last number indicates number of channels, e.g. 1 for
             grayscale or 3 for RGB
         """
-        super(HorizontalFlipLayer, self).__init__()
+        super().__init__()
 
         _eye = torch.eye(2, 3)
         self.register_buffer('_eye', _eye)
@@ -243,10 +239,9 @@ class HorizontalFlipLayer(nn.Module):
 
         return inputs
 
-
 class RandomColorGrayLayer(nn.Module):
     def __init__(self, p):
-        super(RandomColorGrayLayer, self).__init__()
+        super().__init__()
         self.prob = p
 
         _weight = torch.tensor([[0.299, 0.587, 0.114]])
@@ -268,10 +263,9 @@ class RandomColorGrayLayer(nn.Module):
 
         return gray
 
-
 class ColorJitterLayer(nn.Module):
     def __init__(self, p, brightness, contrast, saturation, hue):
-        super(ColorJitterLayer, self).__init__()
+        super().__init__()
         self.prob = p
         self.brightness = self._check_input(brightness, 'brightness')
         self.contrast = self._check_input(contrast, 'contrast')
@@ -336,7 +330,6 @@ class ColorJitterLayer(nn.Module):
         _mask = torch.bernoulli(_prob).view(-1, 1, 1, 1)
         return inputs * (1 - _mask) + self.transform(inputs) * _mask
 
-
 class RandomHSVFunction(Function):
     @staticmethod
     def forward(ctx, x, f_h, f_s, f_v):
@@ -362,7 +355,6 @@ class RandomHSVFunction(Function):
             grad_input = grad_output.clone()
         return grad_input, None, None, None
 
-
 class NormalizeLayer(nn.Module):
     """
     In order to certify radii in original coordinates rather than standardized coordinates, we
@@ -371,7 +363,7 @@ class NormalizeLayer(nn.Module):
     """
 
     def __init__(self):
-        super(NormalizeLayer, self).__init__()
+        super().__init__()
 
     def forward(self, inputs):
         return (inputs - 0.5) / 0.5

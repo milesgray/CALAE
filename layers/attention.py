@@ -114,7 +114,7 @@ class SelfAttention(nn.Module):
 class Self_Attn(nn.Module):
     # https://github.com/voletiv/self-attention-GAN-pytorch
     def __init__(self, in_channels, spectral_norm):
-        super(Self_Attn, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
 
         if spectral_norm:
@@ -164,10 +164,8 @@ class Self_Attn(nn.Module):
 # CAM module
 class ChannelAttention(nn.Module):
     """ Channel attention module"""
-    def __init__(self, in_dim):
+    def __init__(self):
         super().__init__()
-        self.chanel_in = in_dim
-
         self.gamma = nn.Parameter(torch.zeros(1))
         self.softmax  = nn.Softmax(dim=-1)
 
@@ -192,6 +190,21 @@ class ChannelAttention(nn.Module):
 
 class SqueezeExciteAttention(nn.Module):
     def __init__(self, channel, reduction=16, pool_size=1):
+        """Squeeze -> Excite style channel attention.
+        Projects input into lower dimensional manifold and
+        then back up to the original dimensions to obtain
+        the attention mask that is applied to the input.
+
+        https://github.com/bmycheez/C3Net/blob/master/Burst/models.py#L42
+
+        Args:
+            channel (int): Number of feature channels
+            reduction (int, optional): Determines the attention 
+                mask channel count by dividing the original channels
+                by this. Defaults to 16.
+            pool_size (int, optional): Window size for average pooling. 
+                Defaults to 1.
+        """        
         super().__init__()
         # global average pooling: feature --> point
         self.avg_pool = nn.AdaptiveAvgPool2d(pool_size)
@@ -214,7 +227,7 @@ class SqueezeExciteAttention(nn.Module):
 
 class BasicConv(nn.Module):
     def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True, bn=True, bias=False):
-        super(BasicConv, self).__init__()
+        super().__init__()
         self.out_channels = out_planes
         self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
         self.bn = nn.BatchNorm2d(out_planes,eps=1e-5, momentum=0.01, affine=True) if bn else None
@@ -233,9 +246,8 @@ class ZPool(nn.Module):
         return torch.cat((torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
 
 class AttentionGate(nn.Module):
-    def __init__(self):
-        super(AttentionGate, self).__init__()
-        kernel_size = 7
+    def __init__(self, kernel_size=7):
+        super().__init__()
         self.compress = ZPool()
         self.conv = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
 
@@ -246,13 +258,13 @@ class AttentionGate(nn.Module):
         return x * scale
 
 class TripletAttention(nn.Module):
-    def __init__(self, no_spatial=False):
-        super(TripletAttention, self).__init__()
-        self.cw = AttentionGate()
-        self.hc = AttentionGate()
+    def __init__(self, no_spatial=False, kernel_size=7):
+        super().__init__()
+        self.cw = AttentionGate(kernel_size=kernel_size)
+        self.hc = AttentionGate(kernel_size=kernel_size)
         self.no_spatial=no_spatial
         if not no_spatial:
-            self.hw = AttentionGate()
+            self.hw = AttentionGate(kernel_size=kernel_size)
 
     def forward(self, x):
         x_perm1 = x.permute(0,2,1,3).contiguous()
