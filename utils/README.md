@@ -3,6 +3,7 @@
 These are misc supporting methods for the many different components/algorithms that I pulled into this repository.  Off the top of my head:
 
 - [alae.py](alae.py) - Adversarial Latent AutoEncoder, the model implementation this repo was built around
+- [balance.py](balance.py) - Methods that support finding optimal loss weights during multi objective training (aka most of the time)
 - [bending.py](bending.py) - Style Bending, very cool system for manipulating well trained generative models, never fully integrated in
 - [coilcomp.py](coilcomp.py) - Coil Compression? Coil compression for accelerated imaging with Cartesian sampling.
 - [color.py](color.py) - Color space conversion functionality
@@ -10,6 +11,7 @@ These are misc supporting methods for the many different components/algorithms t
 - [density.py](density.py) - Disentangling-VAE
 - [diffaugment.py](diffaugment.py) - [Differentiable Augmentation for Data-Efficient GAN Training](https://arxiv.org/pdf/2006.10738)
 - [distances.py](distances.py) - "All" of the distance metrics in numpy and pytorch
+- [divergences.py](divergences.py) - Divergence calculations for comparing samples from arbitrary distributions, such as KL and JS
 - [fftc.py](fftc.py) - Fast Fourier Transform flavors adaptor for numpy, from before pytorch had native implementations
 - [files](files.py) - Basic file system utils
 - [importance.py](importance.py) - Disentangling-VAE related
