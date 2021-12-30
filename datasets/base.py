@@ -3,6 +3,7 @@ import logging
 import pathlib
 import random
 import numpy as np
+from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms

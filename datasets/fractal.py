@@ -1,21 +1,13 @@
 import pathlib
 import numbers
 import random
+from tqdm import tqdm
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-import torchvision.datasets as datasets
-import torchvision.transforms.functional as TF
-from PIL import Image
-try:
-    import accimage
-except ImportError:
-    accimage = None
-
-from .augments import MultiCropCoord, BuildOutput, get_blur, get_color_distortion
+from torchvision import MultiCropCoord, BuildOutput, get_blur, get_color_distortion
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------

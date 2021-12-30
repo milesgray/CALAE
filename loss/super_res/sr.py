@@ -92,9 +92,6 @@ class FilterHigh(nn.Module):
         self.recursions = recursions
         self.normalize = normalize
 
-    def forward(self, img):
-        if self.recursions > 1:
-            for i in range(self.recursions - 1):
                 img = self.filter_low(img)
         img = img - self.filter_low(img)
         if self.normalize:
