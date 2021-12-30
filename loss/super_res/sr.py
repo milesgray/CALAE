@@ -92,7 +92,7 @@ class FilterHigh(nn.Module):
         self.recursions = recursions
         self.normalize = normalize
 
-                img = self.filter_low(img)
+        img = self.filter_low(img)
         img = img - self.filter_low(img)
         if self.normalize:
             return 0.5 + img * 0.5
