@@ -91,6 +91,16 @@ class PixelNorm(nn.Module):
         y = torch.sqrt(torch.mean(x**2, dim=1, keepdim=True) + 1e-8)  # [N1HW]
         y = x / y  # normalize the input x volume
         return y
+
+class PixelNorm_StyleGAN2(nn.Module):
+    def __init__(self, eps=1e-8):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        return x * torch.rsqrt(
+            torch.mean(x ** 2, dim=1, keepdim=True) + self.eps)
+
 # ------------------------------------------------------------------------------------------------------------------
 # Switchable Norm
 # Switchable Normalization is a normalization technique that is able to learn different normalization operations for different normalization layers in a deep neural network in an end-to-end manner.

@@ -3,7 +3,9 @@ import torch.nn.parallel
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-__all__ = ["Downsample", "Downsample1D"]
+
+from CALAE.models.op import upfirdn2d
+__all__ = ["Downsample", "Downsample1D", "Downsample_StyleGAN2"]
 
 class Downsample(nn.Module):
     def __init__(self, pad_type='reflect', filt_size=3, stride=2, channels=None, pad_off=0):
@@ -109,3 +111,26 @@ def get_pad_layer_1d(pad_type):
     else:
         print('Pad type [%s] not recognized' % pad_type)
     return PadLayer
+
+class Downsample_StyleGAN2(nn.Module):
+    def __init__(self, kernel, factor=2):
+        super().__init__()
+
+        self.factor = factor
+        kernel = make_kernel(kernel)
+        self.register_buffer('kernel', kernel)
+
+        p = kernel.shape[0] - factor
+
+        pad0 = (p + 1) // 2
+        pad1 = p // 2
+
+        self.pad = (pad0, pad1)
+
+    def forward(self, x):
+        out = upfirdn2d(x, self.kernel, 
+                        up=1, 
+                        down=self.factor, 
+                        pad=self.pad)
+
+        return out

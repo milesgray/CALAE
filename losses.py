@@ -164,13 +164,18 @@ def loss_generator_hessian(G, F, z, scale, alpha,
                            hessian_layers=[3],
                            current_layer=[0],
                            hessian_weight=0.01):
-    loss = hessian_penalty(G, z=F(z, scale, z2=None, p_mix=0), scale=scale, alpha=alpha, return_norm=hessian_layers)
+    loss = hessian_penalty(G, z=F(z, scale, z2=None, p_mix=0), 
+                           scale=scale, 
+                           alpha=alpha, 
+                           return_norm=hessian_layers)
     if current_layer in hessian_layers or scale_alpha:
         loss = loss * alpha
     return loss * hessian_weight
 # ENCODER
-def loss_encoder_hessian(E, samples, alpha, scale_alpha=False,
-                         hessian_layers=[-1,-2], current_layer=[-1],
+def loss_encoder_hessian(E, samples, alpha, 
+                         scale_alpha=False,
+                         hessian_layers=[-1,-2], 
+                         current_layer=[-1],
                          hessian_weight=0.01):
     loss = hessian_penalty(E, z=samples, alpha=alpha, return_norm=hessian_layers)
     if current_layer in hessian_layers or scale_alpha:

@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 from .scaled import ScaledConv2d 
-from CALAE.models import stylegan2
 
 __all__ = ["FromRGB", "ToRGB", "ToRGB_StyleGAN2"]
 
@@ -41,7 +40,7 @@ class ToRGB(nn.Module):
         x = self.to_rgb(x)
         if self.use_bias:
             x = x + self.bias
-        return torch.tanh(x)
+        return torch.tanh(x)        
 # ------------------------------------------------------------------------------------------------------------------
 # Projection from Feature Space to RGB Space from StyleGAN2, also considers a style context
 # Outputs an image with values scaled to [-1, 1]

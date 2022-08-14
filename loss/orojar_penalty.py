@@ -20,10 +20,10 @@ def first_directional_derivative(G, z, c, x, G_z, epsilon, w=None, Q=None):
     Computes the first directional derivative of G w.r.t. its input at z in the direction x or w.
     """
     if w is None:  # Apply the OroJaR in Z-space
-        return (G(z + x, c, Q=Q) - G_z) / epsilon
+        return (G(z + x, c) - G_z) / epsilon
 
     else:  # Apply it in W-space
-        return (G(z, c, w=w+x, Q=Q) - G_z) / epsilon
+        return (G(z, c, w=w+x) - G_z) / epsilon
 
 
 def listify(x):
@@ -34,12 +34,12 @@ def listify(x):
         return [x]
 
 
-def multi_layer_first_directional_derivative(G, z, c, x, G_z, epsilon, w=None, Q=None):
+def multi_layer_first_directional_derivative(G, z, c, x, G_z, epsilon, w=None, **G_kwargs):
     """Estimates the first directional derivative of G w.r.t. its input at z in the direction x or w."""
     if w is None:
-        _, G_to_x = G(z + x, c, return_bn=True, Q=Q)
+        _, G_to_x = G(z + x, return_norm=True)
     else:
-        _, G_to_x = G(z, c, w=w + x, return_bn=True, Q=Q)
+        _, G_to_x = G(z, c, w=w + x, return_norm=True)
 
     G_to_x = listify(G_to_x)
     G_z = listify(G_z)
@@ -63,8 +63,8 @@ def multi_stack_var_and_reduce(fdds, reduction=torch.max, return_separately=Fals
     return sum_of_penalties
 
 
-def orojar(G, z, c, w=None, G_z=None, k=2, epsilon=0.1, reduction=torch.mean,
-                    multiple_layers=True, return_separately=False, Q=None):
+def orojar(G, z, w=None, G_z=None, k=2, epsilon=0.1, reduction=torch.mean,
+                    return_separately=False, **G_kwargs):
     """
     Version of the OroJaR that allows taking the Jacobin matrix w.r.t. the w input instead of z
     Note: w here refers to the coefficients for the learned directions in Q, it has nothing to do with W-space
@@ -84,7 +84,10 @@ def orojar(G, z, c, w=None, G_z=None, k=2, epsilon=0.1, reduction=torch.mean,
     :return: A differentiable scalar (the OroJaR), or a list of regularization of OroJaR if return_separately is True
     """
     if G_z is None:
-        G_z = G(z, c, w=w, return_bn=multiple_layers, Q=Q)
+        if w is None:
+            G_z = G(z, **G_kwargs)
+        else:
+            G_z = G(z, w=w, **G_kwargs)
         if multiple_layers:
             G_z = G_z[1]
     if w is not None:

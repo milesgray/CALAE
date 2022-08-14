@@ -66,6 +66,23 @@ class Blur(nn.Module):
     def forward(self, input):
         return blur(input, self.weight, self.weight_flip)
 
+class Blur_StyleGAN2(nn.Module):
+    def __init__(self, kernel, pad, upsample_factor=1):
+        super().__init__()
+
+        kernel = make_kernel(kernel)
+
+        if upsample_factor > 1:
+            kernel = kernel * (upsample_factor ** 2)
+
+        self.register_buffer('kernel', kernel)
+
+        self.pad = pad
+
+    def forward(self, input):
+        out = upfirdn2d(input, self.kernel, pad=self.pad)
+
+        return out
 # ------------------------------------------------------------------------------------------------------------------
 # Blur from original ALAE
 # https://github.com/podgorskiy/ALAE/blob/master/net.py#L49
