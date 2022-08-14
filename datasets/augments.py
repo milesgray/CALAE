@@ -168,7 +168,7 @@ class MultiCropCoord:
         y2 = y1 + w
 
         img = TF.crop(img, i, j, h, w)
-        img = (img - np.min(img)) / (np.max(img)-np.min(img))
+        #img = (img - np.min(img)) / (np.max(img)-np.min(img))
 
         return img, \
                (x1, y1, x2, y2, h, w)
