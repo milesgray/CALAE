@@ -15,7 +15,7 @@ from .lreq import SeparableConv2d as LREQ_SeparableConv2d, SeparableConvTranspos
 from .made import MaskedLinear, MADESplit, MADE
 from .normalize import ActNorm, LayerNorm, GroupedChannelNorm, \
     PixelNorm, PixelNorm_StyleGAN2, SwitchNorm, \
-        SPADE, AdaIn
+        SPADE, AdaIN
 from .upsample import Upsample, Upsample_StyleGAN2, Upsample1D
 from .scaled import ScaleWeights, ScaledLinear, ScaledConv2d
 from .sobel import Sobel
