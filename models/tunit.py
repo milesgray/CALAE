@@ -290,7 +290,7 @@ def disc_weights_init(init_type='gaussian'):
 
 class Generator(nn.Module):   
     def __init__(self, img_size=128, sty_dim=64, n_res=2, use_sn=False):
-        super(Generator, self).__init__()
+        super().__init__()
         print("Init Generator")
 
         self.nf = 64 if img_size < 256 else 32

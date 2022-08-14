@@ -8,6 +8,7 @@ from torch.nn import functional as F
 import numpy as np
 
 from .switch_norm import SwitchNorm1d, SwitchNorm2d, SwitchNorm3d
+from .scaled import ScaledLinear
 
 ####################################################################################################################
 ###### N O R M A L I Z A T I O N #########--------------------------------------------------------------------------
@@ -121,7 +122,32 @@ class SwitchNorm:
     def forward(self, x):
         return self.norm.forward(x)
 
+# ------------------------------------------------------------------------------------------------------------------
+# Adaptive Instance normalization.
+# reference: https://github.com/tkarras/progressive_growing_of_gans/blob/master/networks.py#L120
+# ------------------------------------------------------------------------------------------------------------------
+class AdaIN(nn.Module):
+    def __init__(self, n_channels, code):
+        super().__init__()
+        
+        self.norm = nn.InstanceNorm2d(n_channels, affine=False, eps=1e-8)
+        self.A = ScaledLinear(code, n_channels * 2)
+        
+        # StyleGAN
+        # self.A.linear.bias.data = torch.cat([torch.ones(n_channels), torch.zeros(n_channels)])
+        
+    def forward(self, x, style):
+        """
+        x - (N x C x H x W)
+        style - (N x (Cx2))
+        """        
+        # Project project style vector(w) to  mu, sigma and reshape it 2D->4D to allow channel-wise operations        
+        style = self.A(style)
+        y = style.view(style.shape[0], 2, style.shape[1]//2).unsqueeze(3).unsqueeze(4)
 
+        x = self.norm(x)
+        
+        return torch.addcmul(y[:, 1], value=1., tensor1=y[:, 0] + 1, tensor2 = x)     
 # ------------------------------------------------------------------------------------------------------------------
 # SPADE
 # https://github.com/NVlabs/SPADE/blob/master/models/networks/normalization.py#L66

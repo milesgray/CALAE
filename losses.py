@@ -69,9 +69,12 @@ def loss_generator(E, D, alpha, fake_samples, enable_hessian=True, hessian_layer
     loss = softplus(-D(E_z)).mean()
     if enable_hessian:
         for layer in hessian_layers:
-            h_loss = hessian_penalty(E, z=fake_samples, alpha=alpha, return_norm=layer) * hessian_weight
+            h_loss = hessian_penalty(E, 
+                                     z=fake_samples, 
+                                     alpha=alpha, 
+                                     return_norm=layer) * hessian_weight
             if layer in current_layer:
-                h_loss = h_loss * alpha
+                h_loss = h_loss * alpha 
             loss += h_loss
     return loss
 
