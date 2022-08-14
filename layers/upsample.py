@@ -3,7 +3,7 @@ import torch.nn.parallel
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-
+from CALAE.models.op import upfirdn2d
 class Upsample(nn.Module):
     def __init__(self, channels, pad_type='repl', filt_size=4, stride=2):
         super().__init__()
@@ -42,6 +42,7 @@ class Upsample(nn.Module):
             return ret_val
         else:
             return ret_val[:, :, :-1, :-1]
+
 def get_pad_layer(pad_type):
     if(pad_type in ['refl','reflect']):
         PadLayer = nn.ReflectionPad2d
@@ -55,7 +56,7 @@ def get_pad_layer(pad_type):
 
 class Upsample1D(nn.Module):
     def __init__(self, pad_type='reflect', filt_size=3, stride=2, channels=None, pad_off=0):
-        super(Upsample1D, self).__init__()
+        super().__init__()
         self.filt_size = filt_size
         self.pad_off = pad_off
         self.pad_sizes = [int(1. * (filt_size - 1) / 2), int(np.ceil(1. * (filt_size - 1) / 2))]
@@ -105,3 +106,27 @@ def get_pad_layer_1d(pad_type):
     else:
         print('Pad type [%s] not recognized' % pad_type)
     return PadLayer
+
+
+class Upsample_StyleGAN2(nn.Module):
+    def __init__(self, kernel, factor=2):
+        super().__init__()
+
+        self.factor = factor
+        kernel = make_kernel(kernel) * (factor ** 2)
+        self.register_buffer('kernel', kernel)
+
+        p = kernel.shape[0] - factor
+
+        pad0 = (p + 1) // 2 + factor - 1
+        pad1 = p // 2
+
+        self.pad = (pad0, pad1)
+
+    def forward(self, x):
+        out = upfirdn2d(x, self.kernel, 
+                        up=self.factor, 
+                        down=1, 
+                        pad=self.pad)
+
+        return out
