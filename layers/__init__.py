@@ -20,4 +20,4 @@ from .upsample import Upsample, Upsample_StyleGAN2, Upsample1D
 from .scaled import ScaleWeights, ScaledLinear, ScaledConv2d
 from .sobel import Sobel
 from .switch_norm import SwitchNorm1d, SwitchNorm2d, SwitchNorm3d
-from .noise import IntermediateNoise
+from .noise import NoiseNormalize, IntermediateNoise, BallProjection

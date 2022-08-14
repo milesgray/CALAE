@@ -38,3 +38,16 @@ class IntermediateNoise(nn.Module):
             return x + (noise * self.weight)
         else:
             return x
+
+# ------------------------------------------------------------------------------------------------------------------
+# Unit Hypersphere Projection
+# ------------------------------------------------------------------------------------------------------------------
+class BallProjection(nn.Module):
+    """
+    Constraint norm of an input noise vector to be sqrt(latent_code_size)
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x.div((torch.mean(x.pow(2), dim=1, keepdim=True).add(1e-8)).pow(0.5))            
