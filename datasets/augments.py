@@ -167,7 +167,11 @@ class MultiCropCoord:
         x2 = x1 + h
         y2 = y1 + w
 
-        return TF.crop(img, i, j, h, w), (x1, y1, x2, y2, h, w)
+        img = TF.crop(img, i, j, h, w)
+        img = (img - np.min(img)) / (np.max(img)-np.min(img))
+
+        return img, \
+               (x1, y1, x2, y2, h, w)
 
     def _resize_coord(self, coord):
         """ Scale the coordinates by the amount the crop was resized

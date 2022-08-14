@@ -3,11 +3,14 @@ import numbers
 import random
 from tqdm import tqdm
 
+from PIL import Image
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torchvision import MultiCropCoord, BuildOutput, get_blur, get_color_distortion
+from torchvision import transforms
+from .augments import get_blur, get_color_distortion
+from .augments import BuildOutput, MultiCropCoord
 
 ####################################################################################################################
 ########### F R A C T A L #############-------------------------------------------------------------------------------
@@ -228,7 +231,7 @@ def make_fractal_clr_sr_dataloader(
 ## SWAV Style, DirectoryDataset based #######
 ###########################################
 
-class ContrastiveMultiCropDataset(datasets.ImageFolder):
+class ContrastiveMultiCropDataset(Dataset):
     def __init__(
         self,
         data_path,
@@ -246,7 +249,7 @@ class ContrastiveMultiCropDataset(datasets.ImageFolder):
         self.use_pad = use_pad
 
         trans = []
-        color_transform = transforms.Compose([get_color_distortion(), get_blur()])
+        color_transform = transforms.Compose([transforms.ColorJitter(0.5,0.5,0.2), get_blur()])
 
         for i in range(count):
             randomcrop = transforms.RandomCrop(crop_size)
