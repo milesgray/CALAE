@@ -19,7 +19,7 @@ from CALAE.layers import ToRGB, FromRGB, AdaIN, AdaPN
 from CALAE.layers import IntermediateNoise, Blur
 from CALAE.layers import LearnableGaussianTransform2d, LearnableAffineTransform2d
 from CALAE.layers import ExplicitCoordConv
-from CALAE.layers import TripletAttention
+from CALAE.layers.attention import TripletAttention
 from CALAE.layers.scaled import ScaledConv2d, ScaledLinear, set_scale
 import CALAE.layers.lreq as lreq
 
