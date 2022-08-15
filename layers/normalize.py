@@ -149,6 +149,31 @@ class AdaIN(nn.Module):
         
         return torch.addcmul(y[:, 1], value=1., tensor1=y[:, 0] + 1, tensor2 = x)     
 # ------------------------------------------------------------------------------------------------------------------
+# Pixelwise feature vector normalization.
+# reference: https://github.com/tkarras/progressive_growing_of_gans/blob/master/networks.py#L120
+# ------------------------------------------------------------------------------------------------------------------
+class AdaPN(nn.Module):
+    def __init__(self, n_channels, code):
+        super().__init__()
+        self.A = ScaledLinear(code, n_channels * 2)
+
+    def forward(self, x, style, alpha=1e-8):
+        """
+        x - (N x C x H x W)
+        style - (N x (Cx2))
+        :param x: input activations volume
+        :param alpha: small number for numerical stability
+        :return: y => pixel normalized activations
+        """
+        # Project project style vector(w) to  mu, sigma and reshape it 2D->4D to allow channel-wise operations  
+        style = self.A(style)
+        z = style.view(style.shape[0], 2, style.shape[1]//2).unsqueeze(3).unsqueeze(4)
+        # original PixelNorm
+        y = torch.sqrt(torch.mean(x**2, dim=1, keepdim=True) + 1e-8)  # [N1HW]
+        y = x / y  # normalize the input x volume        
+        # addcmul like in AdaIN
+        return torch.addcmul(z[:, 1], value=1., tensor1=z[:, 0] + 1, tensor2=y)
+# ------------------------------------------------------------------------------------------------------------------
 # SPADE
 # https://github.com/NVlabs/SPADE/blob/master/models/networks/normalization.py#L66
 # Creates SPADE normalization layer based on the given configuration
