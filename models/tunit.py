@@ -357,7 +357,7 @@ class Decoder(nn.Module):
 
 class ContentEncoder(nn.Module):
     def __init__(self, nf_cnt, n_downs, n_res, norm, act, pad, use_sn=False):
-        super(ContentEncoder, self).__init__()
+        super().__init__()
         print("Init ContentEncoder")
 
         nf = nf_cnt

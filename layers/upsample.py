@@ -3,8 +3,8 @@ import torch.nn.parallel
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+from CALAE.layers import Factory
 from CALAE.models.op import upfirdn2d
-
 
 class Upsample(nn.Module):
     def __init__(self, channels, pad_type='repl', filt_size=4, stride=2):

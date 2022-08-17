@@ -37,9 +37,10 @@ def initialize_queue(model_k, device, train_loader, feat_size=128):
 
 ### Original utils.py
 
-class Logger(object):
-    def __init__(self, log_dir):
+class Logger:
+    def __init__(self, experiment):
         self.last = None
+        self.experiment
 
     def scalar_summary(self, tag, value, step):
         if self.last and self.last['step'] != step:
@@ -63,11 +64,15 @@ def makedirs(path):
         os.makedirs(path)
 
 
-def save_checkpoint(state, check_list, log_dir, epoch=0):
-    check_file = os.path.join(log_dir, 'model_{}.ckpt'.format(epoch))
-    torch.save(state, check_file)
-    check_list.write('model_{}.ckpt\n'.format(epoch))
-
+def save_checkpoint(state, name, log_path, epoch=0, experiment=None, conserve_space=True):
+    file_name = f'{name}_model_{epoch:04d}.ckpt'
+    save_file = log_path / file_name
+    torch.save(save_dict, save_file)
+    if experiment: experiment.log_model(name, save_file)
+    if conserve_space:
+        file_name = f'{name}_model_{int(epoch-1):04d}.ckpt'
+        del_file = log_path / file_name
+        del_file.unlink()
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
