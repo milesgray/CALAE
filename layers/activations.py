@@ -78,7 +78,7 @@ class XSigmoid(torch.nn.Module):
 @torch.jit.script
 def hat(x):
     if x >= 2 or x < 0:
-        return torch.zeros_like)x)
+        return torch.zeros_like(x)
     elif x >= 0 and x < 1:
         return x
     else:
