@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from .activations import Mish, LogCosh, XTanh, XSigmoid
+from .activations import Mish, LogCosh, XTanh, XSigmoid, Hat
 from .normalize import ActNorm, PixelNorm, GroupedChannelNorm, LayerNorm, SwitchNorm
 
 class Factory:
@@ -102,6 +102,8 @@ class Factory:
                 return nn.Tanhshrink(*args, **kwargs)
             elif activation == 'threshold':
                 return nn.Threshold(*args, **kwargs)
+            elif activation == 'hat':
+                return Hat(*args, **kwargs)
             elif activation == 'none':
                 return nn.Identity()
             else:
