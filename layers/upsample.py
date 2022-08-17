@@ -4,6 +4,8 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from CALAE.models.op import upfirdn2d
+
+
 class Upsample(nn.Module):
     def __init__(self, channels, pad_type='repl', filt_size=4, stride=2):
         super().__init__()
@@ -14,27 +16,10 @@ class Upsample(nn.Module):
         self.off = int((self.stride - 1) / 2.)
         self.channels = channels
 
-        if(self.filt_size==1):
-            a = np.array([1.,])
-        elif(self.filt_size==2):
-            a = np.array([1., 1.])
-        elif(self.filt_size==3):
-            a = np.array([1., 2., 1.])
-        elif(self.filt_size==4):    
-            a = np.array([1., 3., 3., 1.])
-        elif(self.filt_size==5):    
-            a = np.array([1., 4., 6., 4., 1.])
-        elif(self.filt_size==6):    
-            a = np.array([1., 5., 10., 10., 5., 1.])
-        elif(self.filt_size==7):    
-            a = np.array([1., 6., 15., 20., 15., 6., 1.])
-
-        filt = torch.Tensor(a)
-        filt = filt * (stride**2)
-        
+        filt = Factory.get_filter(filt_size=self.filt_size) * (stride**2)
         self.register_buffer('filt', filt[None, None, :, :].repeat((self.channels, 1, 1, 1)))
 
-        self.pad = get_pad_layer(pad_type)([1, 1, 1, 1])
+        self.pad = Factory.get_pad_layer(pad_type)([1, 1, 1, 1])
 
     def forward(self, inp):
         ret_val = F.conv_transpose2d(self.pad(inp), self.filt, stride=self.stride, padding=1 + self.pad_size, groups=inp.shape[1])[:, :, 1:, 1:]
