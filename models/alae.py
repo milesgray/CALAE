@@ -1,18 +1,18 @@
+import random
+import functools
+import math
+from math import log2, ceil
+from typing import List, Callable, Union, Any, TypeVar, Tuple
+
 import torch
 import torch.nn as nn
+from torch.nn import init
 from torch.nn.utils import spectral_norm, remove_spectral_norm
 import torch.distributions as D
- 
-from typing import List, Callable, Union, Any, TypeVar, Tuple
-# from torch import tensor as Tensor
-
-Tensor = TypeVar('torch.tensor')
-
-import random
-from math import log2, ceil
-
 from torch.autograd import Function
 from torch.nn import functional as F
+ 
+Tensor = TypeVar('torch.tensor')
 
 from CALAE.layers import Factory
 from CALAE.layers import ToRGB, FromRGB, AdaIN, AdaPN
@@ -20,8 +20,21 @@ from CALAE.layers import IntermediateNoise, Blur
 from CALAE.layers import LearnableGaussianTransform2d, LearnableAffineTransform2d
 from CALAE.layers import ExplicitCoordConv
 from CALAE.layers.attention import TripletAttention
-from CALAE.layers.scaled import ScaledConv2d, ScaledLinear, set_scale
+from CALAE.layers.scaled import ScaledConv2d, ScaledLinear, set_scale 
+import CALAE.losses
 import CALAE.layers.lreq as lreq
+
+module_avail = {}
+try:
+    import lpips
+    module_avail["LPIPS"] = True
+except:
+    module_avail["LPIPS"] = False
+try:
+    import piq
+    module_avail["PIQ"] = True
+except:
+    module_avail["PIQ"] = False
 
 ####################################################################################################################
 ################################################## Level 2 blocks ##################################################
@@ -419,7 +432,16 @@ class StyleGenerator(nn.Module):
                          256:{"gen":[4,4],"rgb":4},
                          512:{"gen":[4,8],"rgb":8},
                          1024:{"gen":[8,8],"rgb":8}}, 
-                 blur_upsample=False, learn_blur=False, verbose=False):
+                 blur_upsample=False, 
+                 learn_blur=False, 
+                 learn_residual=False, 
+                 learn_style=False, 
+                 learn_noise=False, 
+                 use_attn=True,
+                 use_coord=True,
+                 act="leaky",
+                 norm="instance",
+                 verbose=False):
         super().__init__()
 
         generator_blocks = []
@@ -431,6 +453,13 @@ class StyleGenerator(nn.Module):
                                     initial=i==0, 
                                     blur_upsample=blur_upsample, 
                                     learn_blur=learn_blur,
+                                    learn_residual=learn_residual,
+                                    learn_style=learn_style,
+                                    learn_noise=learn_noise,
+                                    use_attn=use_attn,
+                                    use_coord=use_coord,
+                                    act=act,
+                                    norm=norm,
                                     scale=scale))
             to_rgb_blocks.append(ToRGB(max_fm//settings["rgb"], 3))
             self.max_scale = max(scale, self.max_scale)
@@ -443,7 +472,7 @@ class StyleGenerator(nn.Module):
         for block in self.generator:
             named_block = list(block.named_parameters())
             for index in range(len(named_block)):
-                if 'ada_in' not in named_block[index][0]:
+                if 'ada_norm' not in named_block[index][0]:
                     pars.append(named_block[index][1])
         return pars
     
@@ -461,12 +490,14 @@ class StyleGenerator(nn.Module):
         for key in runing_parameters.keys():
             runing_parameters[key].data.mul_(beta).add_(1 - beta, dict(model.named_parameters())[key].data)
         
-    def forward(self, w, scale, alpha=1, return_norm=False):
+    def forward(self, w, scale, alpha=1, bbox=None, return_norm=False):
         if return_norm:
             # return norm is not 0, it should be set to the layer index (positive)
             # of the layer to use for the return value
             norm_layer_num = return_norm
             return_norm = True
+            return_norm = True
+            norms = []
         n_blocks = int(log2(scale) - 1) # Compute the number of required blocks        
                 
         # Take learnable constant as an input
@@ -477,7 +508,7 @@ class StyleGenerator(nn.Module):
         
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
-            norm = self.generator[0](inp, w[:, 0])
+            norm = self.generator[0](inp, w[:, 0], bbox=bbox)
             if return_norm: return norm
             else: return self.toRGB[0](norm, upsample=False)
 
@@ -495,6 +526,15 @@ class StyleGenerator(nn.Module):
                 activations_2x.append(inp)
         
         inp = self.toRGB[n_blocks-1](activations_2x[1], upsample=False)
+        
         if alpha < 1: # In case if blending is applied            
             inp = (1 - alpha) * self.toRGB[n_blocks-2](activations_2x[0], upsample=True) + alpha * inp
-        return inp
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        else:
+            if return_norm and n_blocks-1 in norm_layer_nums:
+                norms.append(inp)
+        if return_norm:
+            return norms
+        else:
+            return inp

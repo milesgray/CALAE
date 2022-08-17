@@ -74,3 +74,19 @@ class XSigmoid(torch.nn.Module):
 
     def forward(self, x):
         return xsigmoid(x)
+
+@torch.jit.script
+def hat(x):
+    if x >= 2 or x < 0:
+        return 0
+    elif x >= 0 and x < 1:
+        return x
+    else:
+        return 2 - x
+
+class Hat(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return hat(x)

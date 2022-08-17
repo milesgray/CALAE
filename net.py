@@ -13,11 +13,9 @@ from torch.nn import functional as F
 
 import numpy as np
 from typing import List, Callable, Union, Any, TypeVar, Tuple
-# from torch import tensor as Tensor
 
 Tensor = TypeVar('torch.tensor')
 
-#from models.unet_generator import *
 from CALAE.models import stylegan2
 from CALAE.metrics.perceptual import PerceptualLoss
 from CALAE.layers.scaled import set_scale, ScaledLinear, ScaledConv2d 
@@ -2009,6 +2007,9 @@ class StyleGenerator(nn.Module):
                 
         # Take learnable constant as an input
         inp = self.generator[0].constant
+
+        if return_norm:
+            norm = None
         
         # In case of the first block, there is no blending, just return RGB image
         if n_blocks == 1:
